@@ -1,0 +1,42 @@
+# Build folders (all levels)
+build/
+**/build/
+
+# Gradle files and caches
+.gradle/
+.kotlin/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# Built artifacts and binary outputs
+*.apk
+*.aar
+*.ap_
+*.aab
+.build-outputs/
+0_build-outputs/
+app-debug.apk
+PixelWater_WearOS_App.apk
+
+# Local configuration
+local.properties
+
+# Log files
+*.log
+build.log
+
+# Temporary fix scripts and python utilities
+fix_*.py
+test_*.py
+show_*.py
+wait.py
+TestCompose.kt
+
+# OS and IDE configuration
+.DS_Store
+.idea/
+*.iml
+.navigation/
+captures/
+.externalNativeBuild/
+.cxx/

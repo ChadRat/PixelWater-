@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Pixel Water</string>
+    <string name="ai_greeting_message">Ρωτήστε τον βοηθό ενυδάτωσης</string>
+
+    <string name="tab_track">Μετρητής</string>
+    <string name="tab_stats">Στατιστικά</string>
+    <string name="tab_ai_coach">AI Βοηθός</string>
+    <string name="tab_reminders">Ειδοποιήσεις</string>
+    <string name="tab_settings">Ρυθμίσεις</string>
+
+    <string name="title_stats">Στατιστικά</string>
+    <string name="title_ai_coach">AI Βοηθός</string>
+    <string name="title_reminders">Ρυθμίσεις Ειδοποιήσεων</string>
+    <string name="title_settings">Προσωπικές Ρυθμίσεις</string>
+
+    <string name="pref_language">Γλώσσα</string>
+    <string name="pref_language_english">Αγγλικά</string>
+    <string name="pref_language_greek">Ελληνικά</string>
+    <string name="widget_name">Μετρητής Νερού</string>
+    <string name="widget_description">Παρακολουθήστε την καθημερινή κατανάλωση νερού και καταγράψτε γρήγορα την ενυδάτωσή σας.</string>
+    <string name="tile_label">Γρήγορη Προσθήκη</string>
+    <string name="tile_description">Προσθέστε γρήγορα μια προκαθορισμένη ποσότητα νερού.</string>
+</resources>

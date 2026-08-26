@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Base Drop Shape -->
+    <path
+        android:pathData="M54,24c-11.04,0-20,8.96-20,20c0,11.04,20,36,20,36s20-24.96,20-36C74,32.96,65.04,24,54,24z"
+        android:fillColor="#000000"/>
+</vector>

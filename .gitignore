@@ -1,0 +1,27 @@
+*.iml
+.gradle
+.gradle/
+.kotlin
+.kotlin/
+/local.properties
+/.idea/
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+build/
+/build
+app/build/
+/captures
+.externalNativeBuild
+.cxx
+local.properties
+.env
+debug.keystore
+scripts/
+
+# Ensure WearOS companion app embedded in assets is not ignored
+!app/src/main/assets/*.apk

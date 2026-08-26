@@ -1,0 +1,23 @@
+<resources>
+    <string name="app_name">Pixel Water</string>
+    <string name="ai_greeting_message">Ask hydration coach</string>
+
+    <string name="tab_track">Track</string>
+    <string name="tab_stats">Stats</string>
+    <string name="tab_ai_coach">AI Coach</string>
+    <string name="tab_reminders">Reminders</string>
+    <string name="tab_settings">Settings</string>
+
+    <string name="title_stats">Stats</string>
+    <string name="title_ai_coach">AI Coach</string>
+    <string name="title_reminders">Reminders Setting</string>
+    <string name="title_settings">Personal Settings</string>
+
+    <string name="pref_language">Language</string>
+    <string name="pref_language_english">English</string>
+    <string name="pref_language_greek">Greek</string>
+    <string name="widget_name">Water Tracker</string>
+    <string name="widget_description">Track your daily water intake and quick log hydration.</string>
+    <string name="tile_label">Quick Add Water</string>
+    <string name="tile_description">Quickly add a pre-configured amount of water.</string>
+</resources>

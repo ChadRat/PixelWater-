@@ -1,0 +1,6 @@
+{
+  "name": "Pixel Water",
+  "description": "Track your daily water intake, set personalized logs, and receive smart notification reminders to stay hydrated throughout the day.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

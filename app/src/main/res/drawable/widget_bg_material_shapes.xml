@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Main background of the card -->
+    <item>
+        <shape android:shape="rectangle">
+            <corners android:radius="24dp" />
+            <solid android:color="#1A1C1E" />
+            <stroke android:width="1.5dp" android:color="#2196F3" />
+        </shape>
+    </item>
+    <!-- Geometric Circle shapes top-right -->
+    <item android:top="-30dp" android:right="-30dp" android:left="130dp" android:bottom="130dp">
+        <shape android:shape="oval">
+            <solid android:color="#1F243E" />
+        </shape>
+    </item>
+    <!-- Geometric Rounded Rectangle at bottom-left -->
+    <item android:top="140dp" android:bottom="-40dp" android:left="-40dp" android:right="140dp">
+        <shape android:shape="rectangle">
+            <corners android:radius="30dp" />
+            <solid android:color="#231F35" />
+        </shape>
+    </item>
+    <!-- Concentric circle borders -->
+    <item android:top="80dp" android:left="20dp" android:right="120dp" android:bottom="40dp">
+        <shape android:shape="oval">
+            <stroke android:width="1dp" android:color="#1F243E" />
+            <solid android:color="#13354E99" />
+        </shape>
+    </item>
+</layer-list>
