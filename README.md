@@ -8,10 +8,3 @@
 this is my new repository for the Pixel Water app  that i can update with ease 
 
 feel free to reach out for any suggestions, questions, or criticism ( hope not ಠ‿ಠ )
-
----
-
-
-
----
-
