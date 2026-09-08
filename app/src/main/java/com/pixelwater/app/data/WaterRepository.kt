@@ -34,4 +34,10 @@ class WaterRepository(private val waterLogDao: WaterLogDao) {
     suspend fun deleteLogsForDate(dateString: String) {
         waterLogDao.deleteLogsForDate(dateString)
     }
+
+    suspend fun deleteLogsOlderThan(cutoffDateStr: String, cutoffTimestamp: Long): Int =
+        waterLogDao.deleteLogsOlderThan(cutoffDateStr, cutoffTimestamp)
+
+    suspend fun deleteLogsRecent30Days(cutoffDateStr: String, cutoffTimestamp: Long): Int =
+        waterLogDao.deleteLogsRecent30Days(cutoffDateStr, cutoffTimestamp)
 }

@@ -17196,6 +17196,14 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
         }
     }
 
+    // 4b. App User Data Limitation & Storage Management Card
+    item {
+        AppUserDataLimitCard(
+            viewModel = viewModel,
+            appLanguage = appLanguage
+        )
+    }
+
     // 5. Force Sync
     item {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -27149,8 +27157,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderWearOsSettingsSection(
                         CapsulePatternSlider(
                             value = wearPastDaysToShow.toFloat(),
                             onValueChange = { viewModel.updateWearPastDaysToShow(it.toInt()) },
-                            valueRange = 0f..7f,
-                            stepsCount = 8,
+                            valueRange = 1f..7f,
+                            stepsCount = 7,
                             triggerHaptic = { viewModel.triggerSliderHaptic() },
                             showDots = false,
                             modifier = Modifier.fillMaxWidth()
@@ -30576,8 +30584,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderWearOsSettingsSection_d
                     CapsulePatternSlider(
                         value = wearPastDaysToShow.toFloat(),
                         onValueChange = { viewModel.updateWearPastDaysToShow(it.toInt()) },
-                        valueRange = 0f..7f,
-                        stepsCount = 8,
+                        valueRange = 1f..7f,
+                        stepsCount = 7,
                         triggerHaptic = { viewModel.triggerSliderHaptic() },
                         modifier = Modifier.fillMaxWidth()
                     )

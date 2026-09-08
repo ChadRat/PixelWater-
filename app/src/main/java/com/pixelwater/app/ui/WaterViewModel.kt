@@ -458,6 +458,29 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun generateTestPastData60Days(onComplete: () -> Unit = {}) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            for (i in 35..50) {
+                val pastCal = Calendar.getInstance().apply {
+                    add(Calendar.DAY_OF_YEAR, -i)
+                }
+                val dateString = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(pastCal.time)
+                repository.insertLog(WaterLog(
+                    waterEquivalentMl = 2200,
+                    amountMl = 2200,
+                    timestamp = pastCal.timeInMillis,
+                    dateString = dateString,
+                    beverageType = "Water"
+                ))
+            }
+            calculateStreak()
+            refreshCurrentUserDataSize()
+            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                onComplete()
+            }
+        }
+    }
+
     fun clearMockData() {
         viewModelScope.launch {
             repository.deleteAllLogs()
@@ -835,6 +858,23 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun isWearableUnavailable(e: Throwable?): Boolean {
+        if (e == null) return false
+        if (e is com.google.android.gms.common.api.ApiException) {
+            val sc = e.statusCode
+            if (sc == 17 || sc == 16) {
+                return true
+            }
+        }
+        val msg = e.message ?: ""
+        return msg.startsWith("17") ||
+               msg.contains("17:") ||
+               msg.contains("API_UNAVAILABLE", ignoreCase = true) ||
+               msg.contains("API_NOT_AVAILABLE", ignoreCase = true) ||
+               msg.contains("API_NOT_CONNECTED", ignoreCase = true) ||
+               msg.contains("API_DISABLED", ignoreCase = true)
+    }
+
     private fun loadInitialWatchDetails() {
         try {
             com.google.android.gms.wearable.Wearable.getDataClient(getApplication())
@@ -868,14 +908,14 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 .addOnFailureListener { e ->
-                    if (e.message?.contains("API_UNAVAILABLE") == true || e.message?.contains("17: API:") == true) {
+                    if (isWearableUnavailable(e)) {
                         Log.d("WaterViewModel", "Wearable API not available, skipping initial watch details.")
                     } else {
                         Log.e("WaterViewModel", "Failed to load initial watch details: ${e.message}")
                     }
                 }
         } catch (e: Exception) {
-            if (e.message?.contains("API_UNAVAILABLE") == true || e.message?.contains("17: API:") == true) {
+            if (isWearableUnavailable(e)) {
                 Log.d("WaterViewModel", "Wearable API not available, skipping initial watch details.")
             } else {
                 Log.e("WaterViewModel", "Error loading initial watch details: ${e.message}")
@@ -902,14 +942,14 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
                 .addOnFailureListener { e ->
-                    if (e.message?.contains("API_UNAVAILABLE") == true || e.message?.contains("17: API:") == true) {
+                    if (isWearableUnavailable(e)) {
                         Log.d("WaterViewModel", "Wearable API not available, skipping watch connection check.")
                     } else {
                         Log.e("WaterViewModel", "Failed to get connected nodes: ${e.message}")
                     }
                 }
         } catch (e: Exception) {
-            if (e.message?.contains("API_UNAVAILABLE") == true || e.message?.contains("17: API:") == true) {
+            if (isWearableUnavailable(e)) {
                 Log.d("WaterViewModel", "Wearable API not available, skipping watch connection check.")
             } else {
                 Log.e("WaterViewModel", "Error getting connected nodes: ${e.message}")
@@ -1303,7 +1343,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateWearPastDaysToShow(days: Int) {
-        _wearPastDaysToShow.value = days.coerceIn(0, 7)
+        _wearPastDaysToShow.value = days.coerceIn(1, 7)
         prefs.edit().putInt("wear_past_days_to_show", _wearPastDaysToShow.value).apply()
         triggerWearOsSync()
     }
@@ -2757,6 +2797,429 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // App User Data Limitation & Storage Management
+    data class UserDataStats(
+        val totalBytes: Long = 0L,
+        val databaseBytes: Long = 0L,
+        val filesAndBackupsBytes: Long = 0L,
+        val preferencesBytes: Long = 0L,
+        val formattedTotal: String = "0 B",
+        val formattedDatabase: String = "0 B",
+        val formattedFilesAndBackups: String = "0 B",
+        val formattedPreferences: String = "0 B"
+    )
+
+    private val _appUserDataLimitMb = MutableStateFlow(
+        prefs.getInt("app_user_data_limit_mb", prefs.getInt("app_cache_limit_mb", 1024))
+    )
+    val appUserDataLimitMb: StateFlow<Int> = _appUserDataLimitMb.asStateFlow()
+
+    private val _currentUserDataStats = MutableStateFlow(UserDataStats())
+    val currentUserDataStats: StateFlow<UserDataStats> = _currentUserDataStats.asStateFlow()
+
+    fun updateAppUserDataLimitMb(limitMb: Int) {
+        val clamped = limitMb.coerceIn(10, 5120)
+        _appUserDataLimitMb.value = clamped
+        prefs.edit().putInt("app_user_data_limit_mb", clamped).apply()
+        triggerSliderHaptic()
+    }
+
+    fun refreshCurrentUserDataSize() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            val stats = calculateUserDataStats()
+            _currentUserDataStats.value = stats
+            _currentCacheSizeBytes.value = stats.totalBytes
+        }
+    }
+
+    fun optimizeUserDataStorage(onComplete: (freedBytes: Long, message: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val beforeStats = calculateUserDataStats()
+
+                // Safe SQLite Compaction: Checkpoint WAL & compact pages
+                // STRICT GUARANTEE: Water logs, day streaks, graphs, and settings are 100% preserved.
+                try {
+                    database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(FULL)")
+                    database.openHelper.writableDatabase.execSQL("VACUUM")
+                } catch (e: Exception) {
+                    Log.e("WaterViewModel", "Error running database checkpoint/vacuum", e)
+                }
+
+                // Clean temporary cache files in cache directories
+                val context = getApplication<Application>()
+                val cacheDirs = listOfNotNull(context.cacheDir, context.externalCacheDir)
+                for (dir in cacheDirs) {
+                    deleteDirectoryContents(dir)
+                }
+
+                val afterStats = calculateUserDataStats()
+                _currentUserDataStats.value = afterStats
+                _currentCacheSizeBytes.value = afterStats.totalBytes
+                val freed = (beforeStats.totalBytes - afterStats.totalBytes).coerceAtLeast(0L)
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    triggerButtonHaptic()
+                    val freedStr = formatBytesToDisplay(freed)
+                    val msg = if (appLanguage.value == "el") {
+                        "Βελτιστοποιήθηκε! Απελευθερώθηκαν $freedStr χώρου. Τα δεδομένα & σερί σας διατηρήθηκαν ακέραια."
+                    } else {
+                        "Optimized! Reclaimed $freedStr. Your logs and streaks were kept intact."
+                    }
+                    onComplete(freed, msg)
+                }
+            } catch (e: Exception) {
+                Log.e("WaterViewModel", "Error optimizing user data storage", e)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(0L, "Optimization completed.")
+                }
+            }
+        }
+    }
+
+    fun purgeUserDataOlderThanMonth(onComplete: (freedBytes: Long, message: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val beforeStats = calculateUserDataStats()
+
+                // Cutoff date is 30 days ago (1 month)
+                val cal = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, -30)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val cutoffTimestamp = cal.timeInMillis
+                val cutoffDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
+
+                // Truly delete older logs from SQLite Room DB
+                val deletedLogsCount = repository.deleteLogsOlderThan(cutoffDateStr, cutoffTimestamp)
+
+                // Clean backup files older than 30 days
+                var deletedBackupsCount = 0
+                try {
+                    val backupDir = getBackupDirectory()
+                    if (backupDir.exists()) {
+                        backupDir.listFiles()?.forEach { f ->
+                            if (f.isFile && (f.lastModified() < cutoffTimestamp || f.name.contains(cutoffDateStr))) {
+                                if (f.delete()) {
+                                    deletedBackupsCount++
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e("WaterViewModel", "Error deleting old backup files", e)
+                }
+
+                // Clean temporary cache files in cache directories
+                val context = getApplication<Application>()
+                val cacheDirs = listOfNotNull(context.cacheDir, context.externalCacheDir)
+                for (dir in cacheDirs) {
+                    deleteDirectoryContents(dir)
+                }
+
+                // Safely checkpoint SQLite WAL to commit freed space without transaction collisions
+                try {
+                    database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(PASSIVE)")
+                } catch (e: Exception) {
+                    Log.e("WaterViewModel", "Error checkpointing database after purge", e)
+                }
+
+                // Recalculate streak and update widgets
+                calculateStreak()
+                updateHomeScreenWidget()
+                triggerWearOsSync()
+
+                val afterStats = calculateUserDataStats()
+                _currentUserDataStats.value = afterStats
+                _currentCacheSizeBytes.value = afterStats.totalBytes
+                val freed = (beforeStats.totalBytes - afterStats.totalBytes).coerceAtLeast(0L)
+                val totalDeletedItems = deletedLogsCount + deletedBackupsCount
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    triggerButtonHaptic()
+                    val freedStr = formatBytesToDisplay(freed)
+                    val msg = if (appLanguage.value == "el") {
+                        if (totalDeletedItems > 0) {
+                            "Διαγράφηκαν επιτυχώς $deletedLogsCount καταγραφές (> 30 ημερών)${if (deletedBackupsCount > 0) " και $deletedBackupsCount αντίγραφα" else ""}. Απελευθερώθηκαν $freedStr!"
+                        } else {
+                            "Δεν βρέθηκαν καταγραφές άνω των 30 ημερών. Όλα τα δεδομένα σας είναι εντός των τελευταίων 30 ημερών."
+                        }
+                    } else {
+                        if (totalDeletedItems > 0) {
+                            "Successfully deleted $deletedLogsCount logs older than 30 days${if (deletedBackupsCount > 0) " and $deletedBackupsCount backups" else ""}. Freed $freedStr!"
+                        } else {
+                            "No logs older than 30 days found. All your records are within the last 30 days."
+                        }
+                    }
+                    onComplete(freed, msg)
+                }
+            } catch (e: Exception) {
+                Log.e("WaterViewModel", "Error purging user data older than month", e)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(0L, if (appLanguage.value == "el") "Η διαγραφή απέτυχε." else "Deletion failed.")
+                }
+            }
+        }
+    }
+
+    fun deleteUserDataRecent30Days(onComplete: (freedBytes: Long, message: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val beforeStats = calculateUserDataStats()
+
+                val cal = java.util.Calendar.getInstance().apply {
+                    add(java.util.Calendar.DAY_OF_YEAR, -30)
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val cutoffTimestamp = cal.timeInMillis
+                val cutoffDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
+
+                val deletedLogsCount = repository.deleteLogsRecent30Days(cutoffDateStr, cutoffTimestamp)
+
+                val context = getApplication<Application>()
+                val cacheDirs = listOfNotNull(context.cacheDir, context.externalCacheDir)
+                for (dir in cacheDirs) {
+                    deleteDirectoryContents(dir)
+                }
+
+                try {
+                    database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(PASSIVE)")
+                } catch (e: Exception) {
+                    Log.e("WaterViewModel", "Error checkpointing database", e)
+                }
+
+                calculateStreak()
+                updateHomeScreenWidget()
+                triggerWearOsSync()
+
+                val afterStats = calculateUserDataStats()
+                _currentUserDataStats.value = afterStats
+                _currentCacheSizeBytes.value = afterStats.totalBytes
+                val freed = (beforeStats.totalBytes - afterStats.totalBytes).coerceAtLeast(0L)
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    triggerButtonHaptic()
+                    val freedStr = formatBytesToDisplay(freed)
+                    val msg = if (appLanguage.value == "el") {
+                        if (deletedLogsCount > 0) {
+                            "Διαγράφηκαν επιτυχώς $deletedLogsCount καταγραφές των τελευταίων 30 ημερών. Απελευθερώθηκαν $freedStr!"
+                        } else {
+                            "Δεν βρέθηκαν καταγραφές των τελευταίων 30 ημερών."
+                        }
+                    } else {
+                        if (deletedLogsCount > 0) {
+                            "Successfully deleted $deletedLogsCount logs from the past 30 days. Freed $freedStr!"
+                        } else {
+                            "No logs from the past 30 days found."
+                        }
+                    }
+                    onComplete(freed, msg)
+                }
+            } catch (e: Exception) {
+                Log.e("WaterViewModel", "Error deleting recent logs", e)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(0L, if (appLanguage.value == "el") "Η διαγραφή απέτυχε." else "Deletion failed.")
+                }
+            }
+        }
+    }
+
+    fun clearAllHydrationData(onComplete: (freedBytes: Long, message: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val beforeStats = calculateUserDataStats()
+
+                repository.deleteAllLogs()
+
+                val context = getApplication<Application>()
+                val cacheDirs = listOfNotNull(context.cacheDir, context.externalCacheDir)
+                for (dir in cacheDirs) {
+                    deleteDirectoryContents(dir)
+                }
+
+                try {
+                    database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(PASSIVE)")
+                } catch (e: Exception) {
+                    Log.e("WaterViewModel", "Error checkpointing database", e)
+                }
+
+                calculateStreak()
+                updateHomeScreenWidget()
+                triggerWearOsSync()
+
+                val afterStats = calculateUserDataStats()
+                _currentUserDataStats.value = afterStats
+                _currentCacheSizeBytes.value = afterStats.totalBytes
+                val freed = (beforeStats.totalBytes - afterStats.totalBytes).coerceAtLeast(0L)
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    triggerButtonHaptic()
+                    val freedStr = formatBytesToDisplay(freed)
+                    val msg = if (appLanguage.value == "el") {
+                        "Όλες οι καταγραφές νερού διαγράφηκαν επιτυχώς! Απελευθερώθηκαν $freedStr."
+                    } else {
+                        "All hydration logs were deleted successfully! Freed $freedStr."
+                    }
+                    onComplete(freed, msg)
+                }
+            } catch (e: Exception) {
+                Log.e("WaterViewModel", "Error clearing all hydration data", e)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(0L, if (appLanguage.value == "el") "Η διαγραφή απέτυχε." else "Deletion failed.")
+                }
+            }
+        }
+    }
+
+    private fun calculateUserDataStats(): UserDataStats {
+        val context = getApplication<Application>()
+        var databaseBytes = 0L
+        var filesBytes = 0L
+        var prefsBytes = 0L
+        var otherInternalDataBytes = 0L
+        var externalFilesBytes = 0L
+        var backupsFolderBytes = 0L
+
+        try {
+            // 1. Room SQLite Database directory
+            val dbFile = context.getDatabasePath("water_tracker_database")
+            dbFile.parentFile?.let { dbDir ->
+                if (dbDir.exists() && dbDir.isDirectory) {
+                    dbDir.listFiles()?.forEach { f ->
+                        databaseBytes += if (f.isDirectory) getDirectorySize(f) else f.length()
+                    }
+                }
+            }
+
+            // 2. Internal files directory
+            context.filesDir?.let { fDir ->
+                if (fDir.exists()) {
+                    filesBytes += getDirectorySize(fDir)
+                }
+            }
+
+            // 3. No backup files directory
+            context.noBackupFilesDir?.let { nbDir ->
+                if (nbDir.exists()) {
+                    filesBytes += getDirectorySize(nbDir)
+                }
+            }
+
+            // 4. SharedPreferences directory and other internal data folders
+            val dataDir = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
+                context.dataDir
+            } else {
+                context.filesDir?.parentFile
+            }
+            dataDir?.let { root ->
+                val spDir = java.io.File(root, "shared_prefs")
+                if (spDir.exists() && spDir.isDirectory) {
+                    prefsBytes += getDirectorySize(spDir)
+                }
+                root.listFiles()?.forEach { sub ->
+                    val name = sub.name.lowercase()
+                    // Exclude transient cache directories (cache, code_cache)
+                    if (name != "cache" && name != "code_cache" && name != "databases" && name != "files" && name != "no_backup" && name != "shared_prefs") {
+                        otherInternalDataBytes += if (sub.isDirectory) getDirectorySize(sub) else sub.length()
+                    }
+                }
+            }
+
+            // 5. External files directory (app-specific)
+            context.getExternalFilesDir(null)?.let { extDir ->
+                if (extDir.exists()) {
+                    externalFilesBytes += getDirectorySize(extDir)
+                }
+            }
+
+            // 6. User device backups directory
+            try {
+                val backupDir = getBackupDirectory()
+                if (backupDir.exists()) {
+                    backupsFolderBytes += getDirectorySize(backupDir)
+                }
+            } catch (e: Exception) {
+                // Ignore if storage access issue
+            }
+        } catch (e: Exception) {
+            Log.e("WaterViewModel", "Error calculating user data size", e)
+        }
+
+        val totalScanned = databaseBytes + filesBytes + prefsBytes + otherInternalDataBytes + externalFilesBytes + backupsFolderBytes
+        val finalTotal = totalScanned
+
+        val totalFilesAndBackups = filesBytes + otherInternalDataBytes + externalFilesBytes + backupsFolderBytes
+
+        return UserDataStats(
+            totalBytes = finalTotal,
+            databaseBytes = databaseBytes,
+            filesAndBackupsBytes = totalFilesAndBackups,
+            preferencesBytes = prefsBytes,
+            formattedTotal = formatBytesToDisplay(finalTotal),
+            formattedDatabase = formatBytesToDisplay(databaseBytes),
+            formattedFilesAndBackups = formatBytesToDisplay(totalFilesAndBackups),
+            formattedPreferences = formatBytesToDisplay(prefsBytes)
+        )
+    }
+
+    // Backward-compatibility aliases for existing calls
+    val appCacheLimitMb: StateFlow<Int> = _appUserDataLimitMb.asStateFlow()
+    private val _currentCacheSizeBytes = MutableStateFlow(0L)
+    val currentCacheSizeBytes: StateFlow<Long> = _currentCacheSizeBytes.asStateFlow()
+    fun updateAppCacheLimitMb(limitMb: Int) = updateAppUserDataLimitMb(limitMb)
+    fun refreshCurrentCacheSize() = refreshCurrentUserDataSize()
+    fun clearAppCache(onComplete: (freedBytes: Long) -> Unit = {}) {
+        optimizeUserDataStorage { freed, _ -> onComplete(freed) }
+    }
+
+    private fun getDirectorySize(dir: java.io.File): Long {
+        if (!dir.exists()) return 0L
+        if (dir.isFile) return dir.length()
+        var size = 0L
+        dir.listFiles()?.forEach { child ->
+            size += if (child.isDirectory) getDirectorySize(child) else child.length()
+        }
+        return size
+    }
+
+    private fun collectCacheFiles(dir: java.io.File, list: MutableList<java.io.File>) {
+        if (!dir.exists()) return
+        dir.listFiles()?.forEach { file ->
+            if (file.isFile) {
+                list.add(file)
+            } else if (file.isDirectory) {
+                collectCacheFiles(file, list)
+            }
+        }
+    }
+
+    private fun deleteDirectoryContents(dir: java.io.File) {
+        if (!dir.exists()) return
+        dir.listFiles()?.forEach { child ->
+            if (child.isDirectory) {
+                deleteDirectoryContents(child)
+                child.delete()
+            } else {
+                child.delete()
+            }
+        }
+    }
+
+    fun formatBytesToDisplay(bytes: Long): String {
+        return when {
+            bytes >= 1024L * 1024L * 1024L -> String.format(java.util.Locale.US, "%.2f GB", bytes / (1024.0 * 1024.0 * 1024.0))
+            bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0))
+            bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
+            else -> "$bytes B"
+        }
+    }
+
     private val _updateStatus = MutableStateFlow<UpdateStatus>(UpdateStatus.Idle)
     val updateStatus: StateFlow<UpdateStatus> = _updateStatus.asStateFlow()
 
@@ -3132,6 +3595,9 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         // Synchronize application locales with the saved/detected language on startup
         updateAppLanguage(_appLanguage.value)
 
+        // Enforce user preferred data limit and calculate initial accurate user data usage
+        refreshCurrentUserDataSize()
+
         // Sync tile long press app launch setting to PackageManager component state on startup
         try {
             val enabled = prefs.getBoolean("tile_long_press_app_launch", true)
@@ -3452,7 +3918,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         } catch (e: Exception) {
-            if (e.message?.contains("API_UNAVAILABLE") == true || e.message?.contains("17: API:") == true) {
+            if (isWearableUnavailable(e)) {
                 Log.d("WaterViewModel", "Wearable API not available, skipping watch details receiver setup.")
             } else {
                 Log.e("WaterViewModel", "Failed to setup watch details receiver: ${e.message}")
@@ -3465,7 +3931,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         try {
             com.google.android.gms.wearable.Wearable.getDataClient(getApplication()).removeListener(watchDetailsListener)
         } catch (e: Exception) {
-            if (e.message?.contains("API_UNAVAILABLE") == true || e.message?.contains("17: API:") == true) {
+            if (isWearableUnavailable(e)) {
                 // Ignore
             } else {
                 Log.e("WaterViewModel", "Failed to remove watch details listener: ${e.message}")
@@ -5104,8 +5570,10 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateGeminiApiKey(key: String) {
-        _geminiApiKey.value = key
-        prefs.edit().putString("gemini_api_key", key).apply()
+        val trimmed = key.trim()
+        _knownInvalidGeminiKeys.remove(trimmed)
+        _geminiApiKey.value = trimmed
+        prefs.edit().putString("gemini_api_key", trimmed).apply()
     }
 
     fun updateDeepseekApiKey(key: String) {
@@ -7005,7 +7473,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     
                     // Enable googleSearch tool for search grounding when gemini-3.5-flash is selected
-                    val toolsList = if (modelToCall == "gemini-3.5-flash" || modelToCall == "gemini-1.5-flash") {
+                    val toolsList = if (modelToCall == "gemini-3.5-flash") {
                         listOf(com.pixelwater.app.data.Tool(googleSearch = emptyMap()))
                     } else {
                         null
@@ -8359,8 +8827,8 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
 
                 val baseText = generateRuleBasedProgressSummary(logs, targetGoal, lang, targetDateStr)
                 
-                val apiKey = if (_geminiApiKey.value.isNotBlank()) _geminiApiKey.value.trim() else com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
-                if (apiKey != "MY_GEMINI_API_KEY" && apiKey.isNotBlank()) {
+                val apiKey = getEffectiveGeminiApiKey()
+                if (apiKey != null) {
                     val cal = java.util.Calendar.getInstance().apply {
                         set(java.util.Calendar.HOUR_OF_DAY, 0)
                         set(java.util.Calendar.MINUTE, 0)
@@ -8712,7 +9180,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                             return@launch
                         }
                     } catch (e: Exception) {
-                        Log.e("WaterViewModel", "Gemini AI Summary Insight failed: ${e.message}")
+                        Log.d("WaterViewModel", "Gemini AI Summary Insight unavailable (${e.message}), using rule-based coach.")
                     }
                 }
 
@@ -8805,7 +9273,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
 
                 val client = okhttp3.OkHttpClient()
                 val request = okhttp3.Request.Builder()
-                    .url("https://api.github.com/repos/ChadRat/Pixel-Nero-/releases")
+                    .url("https://api.github.com/repos/ChadRat/PixelWater-/releases")
                     .header("User-Agent", "PixelWaterUpdateChecker")
                     .build()
                 
@@ -8877,7 +9345,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                         if (zipUrl.isEmpty()) {
                             zipUrl = releaseObj.optString("zipball_url", "")
                             if (zipUrl.isEmpty() && tagName.isNotEmpty()) {
-                                zipUrl = "https://github.com/ChadRat/Pixel-Nero-/archive/refs/tags/$tagName.zip"
+                                zipUrl = "https://github.com/ChadRat/PixelWater-/archive/refs/tags/$tagName.zip"
                             }
                         }
                         
@@ -8929,7 +9397,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
             try {
                 val client = okhttp3.OkHttpClient()
                 val request = okhttp3.Request.Builder()
-                    .url("https://api.github.com/repos/ChadRat/Pixel-Nero-/releases")
+                    .url("https://api.github.com/repos/ChadRat/PixelWater-/releases")
                     .header("User-Agent", "PixelWaterWearUpdateChecker")
                     .build()
                 
@@ -8995,7 +9463,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                         if (zipUrl.isEmpty()) {
                             zipUrl = releaseObj.optString("zipball_url", "")
                             if (zipUrl.isEmpty() && tagName.isNotEmpty()) {
-                                zipUrl = "https://github.com/ChadRat/Pixel-Nero-/archive/refs/tags/$tagName.zip"
+                                zipUrl = "https://github.com/ChadRat/PixelWater-/archive/refs/tags/$tagName.zip"
                             }
                         }
                         
@@ -9263,9 +9731,8 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         _aiSaturdayLoading.value = true
         
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val hasPersonalKey = _geminiApiKey.value.isNotBlank()
-            val apiKey = if (hasPersonalKey) _geminiApiKey.value.trim() else com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
-            if (apiKey.isEmpty()) {
+            val apiKey = getEffectiveGeminiApiKey()
+            if (apiKey == null) {
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     _aiSaturdayLoading.value = false
                 }
@@ -9504,8 +9971,8 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     Do not output any other introduction, HTML, or conversational text. Speak facts.
                 """.trimIndent()
 
-                val apiKey = if (_geminiApiKey.value.isNotBlank()) _geminiApiKey.value.trim() else com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
-                if (apiKey != "MY_GEMINI_API_KEY" && apiKey.isNotBlank()) {
+                val apiKey = getEffectiveGeminiApiKey()
+                if (apiKey != null) {
                     val contents = listOf(
                         com.pixelwater.app.data.Content(
                             role = "user",
@@ -9559,6 +10026,59 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val _knownInvalidGeminiKeys = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+
+    private fun markApiKeyInvalid(key: String) {
+        val trimmed = key.trim()
+        if (trimmed.isNotBlank()) {
+            _knownInvalidGeminiKeys.add(trimmed)
+        }
+    }
+
+    private fun isGeminiAuthOrKeyError(e: Throwable): Boolean {
+        if (e is retrofit2.HttpException) {
+            val code = e.code()
+            if (code == 401 || code == 403) return true
+            if (code == 400) {
+                val errorBody = try {
+                    e.response()?.errorBody()?.string() ?: ""
+                } catch (_: Exception) {
+                    ""
+                }
+                if (errorBody.contains("API_KEY_INVALID", ignoreCase = true) ||
+                    errorBody.contains("API key not valid", ignoreCase = true) ||
+                    errorBody.contains("API_KEY_EXPIRED", ignoreCase = true) ||
+                    errorBody.contains("keyExpired", ignoreCase = true) ||
+                    (errorBody.contains("INVALID_ARGUMENT", ignoreCase = true) && errorBody.contains("key", ignoreCase = true))
+                ) {
+                    return true
+                }
+            }
+        }
+        val msg = e.message ?: ""
+        return msg.contains("API_KEY_INVALID", ignoreCase = true) ||
+               msg.contains("API key not valid", ignoreCase = true) ||
+               msg.contains("HTTP 401") ||
+               msg.contains("HTTP 403")
+    }
+
+    fun getEffectiveGeminiApiKey(): String? {
+        val userKey = _geminiApiKey.value.trim()
+        val candidate = if (userKey.isNotBlank()) {
+            userKey
+        } else {
+            com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
+        }
+        if (candidate.isBlank() ||
+            candidate == "MY_GEMINI_API_KEY" ||
+            candidate == "YOUR_GEMINI_API_KEY" ||
+            _knownInvalidGeminiKeys.contains(candidate)
+        ) {
+            return null
+        }
+        return candidate
+    }
+
     private suspend fun safeGenerateContent(
         model: String,
         apiKey: String,
@@ -9573,26 +10093,16 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     "gemini-3.1-flash-lite-preview",
                     "gemini-2.5-flash-lite",
                     "gemini-3.5-flash",
-                    "gemini-1.5-flash",
                     "gemini-2.5-flash",
-                    "gemini-2.0-flash",
-                    "gemini-3.1-pro-preview",
-                    "gemini-1.5-pro",
-                    "gemini-2.5-pro",
-                    "gemini-2.0-pro-exp"
+                    "gemini-3.1-pro-preview"
                 ))
             } else {
                 modelsToTry.addAll(listOf(
                     "gemini-3.5-flash",
-                    "gemini-2.0-flash",
-                    "gemini-1.5-flash",
                     "gemini-2.5-flash",
                     "gemini-3.1-flash-lite-preview",
                     "gemini-2.5-flash-lite",
-                    "gemini-3.1-pro-preview",
-                    "gemini-1.5-pro",
-                    "gemini-2.5-pro",
-                    "gemini-2.0-pro-exp"
+                    "gemini-3.1-pro-preview"
                 ))
             }
         } else {
@@ -9609,26 +10119,16 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     "gemini-3.1-flash-lite-preview",
                     "gemini-2.5-flash-lite",
                     "gemini-3.5-flash",
-                    "gemini-1.5-flash",
                     "gemini-2.5-flash",
-                    "gemini-2.0-flash",
-                    "gemini-3.1-pro-preview",
-                    "gemini-1.5-pro",
-                    "gemini-2.5-pro",
-                    "gemini-2.0-pro-exp"
+                    "gemini-3.1-pro-preview"
                 )
             } else {
                 listOf(
                     "gemini-3.5-flash",
-                    "gemini-2.0-flash",
-                    "gemini-1.5-flash",
                     "gemini-2.5-flash",
                     "gemini-3.1-flash-lite-preview",
                     "gemini-2.5-flash-lite",
-                    "gemini-3.1-pro-preview",
-                    "gemini-1.5-pro",
-                    "gemini-2.5-pro",
-                    "gemini-2.0-pro-exp"
+                    "gemini-3.1-pro-preview"
                 )
             }
             backupModels.forEach { fallback ->
@@ -9659,7 +10159,13 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 lastException = e
-                Log.e("WaterViewModel", "Gemini call failed with model: $currentModel (error: ${e.message}), trying fallback...")
+                if (isGeminiAuthOrKeyError(e)) {
+                    val keyPreview = if (apiKey.length > 8) "${apiKey.take(4)}...${apiKey.takeLast(4)}" else apiKey
+                    Log.w("WaterViewModel", "Gemini API key is invalid or unauthorized ($keyPreview). Stopping fallbacks.")
+                    markApiKeyInvalid(apiKey)
+                    break
+                }
+                Log.w("WaterViewModel", "Gemini call failed with model: $currentModel (${e.message}), trying fallback...")
             }
         }
         throw lastException ?: Exception("Unknown error in safeGenerateContent")
@@ -9786,11 +10292,10 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private fun processWorkoutWithAI(workoutType: String, durationMinutes: Int) {
         viewModelScope.launch {
             try {
-                val apiKey = if (_geminiApiKey.value.isNotBlank()) _geminiApiKey.value.trim() else com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
-                val hasApiKey = apiKey != "MY_GEMINI_API_KEY" && apiKey.isNotBlank()
+                val apiKey = getEffectiveGeminiApiKey()
                 val weightKg = if (_setupWeight.value > 10f) _setupWeight.value else 75f
                 
-                if (hasApiKey) {
+                if (apiKey != null) {
                     var prompt = """
                         Act as an expert sports science and hydration AI coach.
                         The athlete has completed a workout:
@@ -10142,10 +10647,9 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private fun processPoorSleepWithAI(sleepHours: Double, isSimulation: Boolean = false) {
         viewModelScope.launch {
             try {
-                val apiKey = if (_geminiApiKey.value.isNotBlank()) _geminiApiKey.value.trim() else com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
-                val hasApiKey = apiKey != "MY_GEMINI_API_KEY" && apiKey.isNotBlank()
+                val apiKey = getEffectiveGeminiApiKey()
 
-                if (hasApiKey) {
+                if (apiKey != null) {
                     var prompt = """
                         Act as an expert sleep physiology and hydration AI coach.
                         The user slept poorly last night, getting only ${String.format("%.1f", sleepHours)} hours of sleep.
@@ -10634,8 +11138,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             try {
-                val apiKey = if (_geminiApiKey.value.isNotBlank()) _geminiApiKey.value.trim() else com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
-                val hasApiKey = apiKey != "MY_GEMINI_API_KEY" && apiKey.isNotBlank()
+                val apiKey = getEffectiveGeminiApiKey()
                 val weightKg = if (_setupWeight.value > 10f) _setupWeight.value else 75f
 
                 val isHumValid = humidity >= 0.0
@@ -10651,7 +11154,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     else -> "Normal"
                 }
 
-                if (hasApiKey) {
+                if (apiKey != null) {
                     var prompt = """
                         Act as "Pixel Water AI Coach", an expert clinical hydration scholar.
                         The user is currently experiencing high/extreme ambient heat wave conditions:

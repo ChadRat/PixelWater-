@@ -37,4 +37,10 @@ interface WaterLogDao {
 
     @Query("DELETE FROM water_logs WHERE dateString = :dateString")
     suspend fun deleteLogsForDate(dateString: String)
+
+    @Query("DELETE FROM water_logs WHERE dateString < :cutoffDateStr OR timestamp < :cutoffTimestamp")
+    suspend fun deleteLogsOlderThan(cutoffDateStr: String, cutoffTimestamp: Long): Int
+
+    @Query("DELETE FROM water_logs WHERE dateString >= :cutoffDateStr OR timestamp >= :cutoffTimestamp")
+    suspend fun deleteLogsRecent30Days(cutoffDateStr: String, cutoffTimestamp: Long): Int
 }

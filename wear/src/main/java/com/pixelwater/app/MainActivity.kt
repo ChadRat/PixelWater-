@@ -344,7 +344,6 @@ class MainActivity : ComponentActivity(), DataClient.OnDataChangedListener {
                         _swipeMode.value = swipeMode
                         _graphSwipeDir.value = graphSwipeDir
                         _wearHapticStrength.value = hapticStrength
-                        _pastDaysToShow.value = pastDaysToShow
                         
                         if (pastIntakesCsv.isNotEmpty()) {
                             _pastIntakesCsv.value = pastIntakesCsv
@@ -472,9 +471,6 @@ class MainActivity : ComponentActivity(), DataClient.OnDataChangedListener {
                             }
                             if (initialPastGoals.isNotEmpty()) {
                                 _pastGoalsCsv.value = initialPastGoals
-                            }
-                            if (dataMap.containsKey("past_days_to_show")) {
-                                _pastDaysToShow.value = dataMap.getInt("past_days_to_show", 3)
                             }
                             if (isGraphSyncDue) {
                                 _intakeMinus3.value = dataMap.getInt("intake_minus_3", _intakeMinus3.value)
