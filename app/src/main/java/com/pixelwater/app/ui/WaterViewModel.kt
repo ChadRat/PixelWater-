@@ -2696,10 +2696,10 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private val _navbarCornerRadius = MutableStateFlow(prefs.getInt("navbar_corner_radius", 100))
+    private val _navbarCornerRadius = MutableStateFlow(prefs.getInt("navbar_corner_radius", 32).coerceIn(0, 32))
     val navbarCornerRadius: StateFlow<Int> = _navbarCornerRadius.asStateFlow()
 
-    private val _generalCornerRadius = MutableStateFlow(prefs.getInt("general_corner_radius", 20))
+    private val _generalCornerRadius = MutableStateFlow(prefs.getInt("general_corner_radius", 40).coerceIn(0, 40))
     val generalCornerRadius: StateFlow<Int> = _generalCornerRadius.asStateFlow()
 
     private val _showOutlines = MutableStateFlow(prefs.getBoolean("show_outlines", true))
@@ -2877,6 +2877,195 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Actively deletes gigabytes of historical user data, old backups (.json), temporary audio clips,
+     * and caches, strictly preserving only the active goal streak.
+     */
+    fun deleteUserDataAndMaintainStreak(onComplete: (freedBytes: Long, message: String) -> Unit = { _, _ -> }) {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val beforeStats = calculateUserDataStats()
+                val context = getApplication<Application>()
+
+                // 1. Capture and preserve current goal streak
+                val currentStreak = _streak.value
+                val persistedStreak = prefs.getInt("persisted_goal_streak", currentStreak)
+                val streakToMaintain = maxOf(currentStreak, persistedStreak)
+                prefs.edit().putInt("persisted_goal_streak", streakToMaintain).apply()
+
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+                val todayStr = getCurrentDateString()
+                val todayGoal = getDailyGoalForDate(todayStr)
+
+                // Streak dates to preserve
+                val streakDatesToKeep = mutableSetOf<String>()
+                streakDatesToKeep.add(todayStr)
+
+                val allCurrentLogs = repository.getAllLogs().first()
+                val dailyTotals = allCurrentLogs.groupBy { it.dateString }
+                    .mapValues { entry -> entry.value.sumOf { it.waterEquivalentMl } }
+
+                val todayTotal = dailyTotals[todayStr] ?: 0
+                val streakCal = java.util.Calendar.getInstance()
+                if (todayTotal >= todayGoal) {
+                    streakCal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                } else {
+                    streakCal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                }
+
+                for (i in 0 until streakToMaintain) {
+                    streakDatesToKeep.add(sdf.format(streakCal.time))
+                    streakCal.add(java.util.Calendar.DAY_OF_YEAR, -1)
+                }
+
+                // 2. Ensure each kept streak day has a compact single log row meeting the goal
+                streakDatesToKeep.forEach { dateKey ->
+                    val dayLogs = allCurrentLogs.filter { it.dateString == dateKey }
+                    val dayGoal = getDailyGoalForDate(dateKey)
+                    val dayIntake = dayLogs.sumOf { it.waterEquivalentMl }
+                    prefs.edit().putInt("goal_history_$dateKey", dayGoal).apply()
+
+                    if (dateKey != todayStr && dayLogs.size > 1) {
+                        repository.deleteLogsForDate(dateKey)
+                        val repTimestamp = dayLogs.firstOrNull()?.timestamp ?: System.currentTimeMillis()
+                        val consolidatedAmount = maxOf(dayIntake, dayGoal)
+                        repository.insertLog(
+                            com.pixelwater.app.data.WaterLog(
+                                amountMl = consolidatedAmount,
+                                timestamp = repTimestamp,
+                                dateString = dateKey,
+                                beverageType = "Water",
+                                waterEquivalency = 1.0f,
+                                waterEquivalentMl = consolidatedAmount,
+                                sourceDevice = null
+                            )
+                        )
+                    }
+                }
+
+                // 3. Delete ALL logs outside active streak
+                val logsToDelete = allCurrentLogs.filterNot { it.dateString in streakDatesToKeep }
+                val deletedLogsCount = logsToDelete.size
+                if (streakDatesToKeep.isNotEmpty()) {
+                    repository.deleteLogsNotInDates(streakDatesToKeep.toList())
+                }
+
+                // 4. Actively delete gigabytes of files across all backup and storage directories
+                var deletedFilesCount = 0
+                val candidateDirs = mutableListOf<java.io.File>()
+                try {
+                    val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    candidateDirs.add(java.io.File(downloadDir, "PixelWaterBackup"))
+                } catch (e: Exception) {}
+                try {
+                    val extDir = android.os.Environment.getExternalStorageDirectory()
+                    candidateDirs.add(java.io.File(extDir, "PixelWaterBackup"))
+                } catch (e: Exception) {}
+                try {
+                    context.getExternalFilesDir(null)?.let {
+                        candidateDirs.add(java.io.File(it, "PixelWaterBackup"))
+                        candidateDirs.add(it)
+                    }
+                } catch (e: Exception) {}
+                try {
+                    context.getExternalFilesDirs(null)?.filterNotNull()?.forEach {
+                        candidateDirs.add(java.io.File(it, "PixelWaterBackup"))
+                        candidateDirs.add(it)
+                    }
+                } catch (e: Exception) {}
+                try {
+                    candidateDirs.add(getBackupDirectory())
+                } catch (e: Exception) {}
+
+                candidateDirs.distinctBy { it.absolutePath }.forEach { bDir ->
+                    try {
+                        if (bDir.exists()) {
+                            bDir.listFiles()?.forEach { f ->
+                                val name = f.name.lowercase()
+                                if (f.isFile && (name.endsWith(".json") || name.endsWith(".bak") || name.endsWith(".zip") || name.endsWith(".csv") || name.endsWith(".tmp") || name.startsWith("backup"))) {
+                                    if (f.delete()) deletedFilesCount++
+                                } else if (f.isDirectory && f.name == "PixelWaterBackup") {
+                                    deleteDirectoryContents(f)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e("WaterViewModel", "Error cleaning backup dir", e)
+                    }
+                }
+
+                // 4b. Clean internal files directory
+                try {
+                    context.filesDir?.listFiles()?.forEach { f ->
+                        if (f.isFile) {
+                            val name = f.name.lowercase()
+                            if (name.startsWith("ai_notification_saved") || name.endsWith(".json") || name.endsWith(".tmp") || name.endsWith(".bak")) {
+                                if (f.delete()) deletedFilesCount++
+                            }
+                        }
+                    }
+                } catch (e: Exception) {}
+
+                // 4c. Clean noBackupFilesDir
+                try {
+                    context.noBackupFilesDir?.let { deleteDirectoryContents(it) }
+                } catch (e: Exception) {}
+
+                // 4d. Clean cache directories
+                try {
+                    val cacheDirs = listOfNotNull(
+                        context.cacheDir,
+                        context.externalCacheDir,
+                        context.codeCacheDir
+                    )
+                    for (dir in cacheDirs) {
+                        deleteDirectoryContents(dir)
+                    }
+                    context.externalCacheDirs?.filterNotNull()?.forEach {
+                        deleteDirectoryContents(it)
+                    }
+                } catch (e: Exception) {}
+
+                // 4e. SQLite WAL truncate checkpoint and VACUUM
+                try {
+                    database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(TRUNCATE)")
+                    database.openHelper.writableDatabase.execSQL("VACUUM")
+                    database.openHelper.writableDatabase.execSQL("PRAGMA shrink_memory")
+                } catch (e: Exception) {
+                    Log.e("WaterViewModel", "Database vacuum error", e)
+                }
+
+                // 5. Recalculate streak & preserve it
+                calculateStreak()
+                updateHomeScreenWidget()
+                triggerWearOsSync()
+
+                // 6. Recalculate storage stats
+                val afterStats = calculateUserDataStats()
+                _currentUserDataStats.value = afterStats
+                _currentCacheSizeBytes.value = afterStats.totalBytes
+                val freed = (beforeStats.totalBytes - afterStats.totalBytes).coerceAtLeast(0L)
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    triggerButtonHaptic()
+                    val freedStr = formatBytesToDisplay(freed)
+                    val streakText = if (appLanguage.value == "el") "$streakToMaintain ημερών" else "$streakToMaintain days"
+                    val msg = if (appLanguage.value == "el") {
+                        "Εκκαθαρίστηκαν επιτυχώς $deletedLogsCount καταγραφές και $deletedFilesCount αρχεία/αντίγραφα. Απελευθερώθηκαν $freedStr! Το σερί στόχου ($streakText) διατηρήθηκε άθικτο."
+                    } else {
+                        "Successfully deleted $deletedLogsCount logs and $deletedFilesCount backup files. Freed $freedStr! Your goal streak ($streakText) is preserved."
+                    }
+                    onComplete(freed, msg)
+                }
+            } catch (e: Exception) {
+                Log.e("WaterViewModel", "Error deleting user data maintaining streak", e)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    onComplete(0L, if (appLanguage.value == "el") "Η διαγραφή απέτυχε." else "Deletion failed.")
+                }
+            }
+        }
+    }
+
     fun purgeUserDataOlderThanMonth(onComplete: (freedBytes: Long, message: String) -> Unit = { _, _ -> }) {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -2893,8 +3082,47 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                 val cutoffTimestamp = cal.timeInMillis
                 val cutoffDateStr = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
 
-                // Truly delete older logs from SQLite Room DB
-                val deletedLogsCount = repository.deleteLogsOlderThan(cutoffDateStr, cutoffTimestamp)
+                // Retrieve all logs
+                val currentLogs = if (allLogs.value.isNotEmpty()) {
+                    allLogs.value
+                } else {
+                    repository.getAllLogs().first()
+                }
+
+                // Filter logs older than 30 days
+                val olderLogs = currentLogs.filter { it.dateString < cutoffDateStr || it.timestamp < cutoffTimestamp }
+                var deletedGranularCount = 0
+
+                if (olderLogs.isNotEmpty()) {
+                    val olderByDate = olderLogs.groupBy { it.dateString }
+                    olderByDate.forEach { (dateStr, dayLogs) ->
+                        val dayTotalAmount = dayLogs.sumOf { it.amountMl }
+                        val dayTotalEquivalent = dayLogs.sumOf { it.waterEquivalentMl }
+                        val repTimestamp = dayLogs.firstOrNull()?.timestamp ?: cal.timeInMillis
+
+                        // Save the goal to preferences to preserve it
+                        val pastGoal = getDailyGoalForDate(dateStr)
+                        prefs.edit().putInt("goal_history_$dateStr", pastGoal).apply()
+
+                        // Delete all granular logs for this past date
+                        repository.deleteLogsForDate(dateStr)
+
+                        // Insert 1 consolidated summary entry
+                        if (dayTotalAmount > 0) {
+                            val consolidatedLog = com.pixelwater.app.data.WaterLog(
+                                amountMl = dayTotalAmount,
+                                timestamp = repTimestamp,
+                                dateString = dateStr,
+                                beverageType = "Daily Consolidated",
+                                waterEquivalency = 1.0f,
+                                waterEquivalentMl = dayTotalEquivalent,
+                                sourceDevice = null
+                            )
+                            repository.insertLog(consolidatedLog)
+                        }
+                        deletedGranularCount += dayLogs.size
+                    }
+                }
 
                 // Clean backup files older than 30 days
                 var deletedBackupsCount = 0
@@ -2923,6 +3151,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                 // Safely checkpoint SQLite WAL to commit freed space without transaction collisions
                 try {
                     database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(PASSIVE)")
+                    database.openHelper.writableDatabase.execSQL("VACUUM")
                 } catch (e: Exception) {
                     Log.e("WaterViewModel", "Error checkpointing database after purge", e)
                 }
@@ -2936,22 +3165,22 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                 _currentUserDataStats.value = afterStats
                 _currentCacheSizeBytes.value = afterStats.totalBytes
                 val freed = (beforeStats.totalBytes - afterStats.totalBytes).coerceAtLeast(0L)
-                val totalDeletedItems = deletedLogsCount + deletedBackupsCount
+                val totalDeletedItems = deletedGranularCount + deletedBackupsCount
 
                 kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
                     triggerButtonHaptic()
                     val freedStr = formatBytesToDisplay(freed)
                     val msg = if (appLanguage.value == "el") {
                         if (totalDeletedItems > 0) {
-                            "Διαγράφηκαν επιτυχώς $deletedLogsCount καταγραφές (> 30 ημερών)${if (deletedBackupsCount > 0) " και $deletedBackupsCount αντίγραφα" else ""}. Απελευθερώθηκαν $freedStr!"
+                            "Εκκαθαρίστηκαν $totalDeletedItems στοιχεία (> 30 ημερών). Απελευθερώθηκαν $freedStr. Το σερί, οι στήλες και οι στόχοι διατηρήθηκαν!"
                         } else {
-                            "Δεν βρέθηκαν καταγραφές άνω των 30 ημερών. Όλα τα δεδομένα σας είναι εντός των τελευταίων 30 ημερών."
+                            "Δεν βρέθηκαν δεδομένα άνω των 30 ημερών. Όλες οι καταγραφές και τα αντίγραφα είναι εντός των τελευταίων 30 ημερών!"
                         }
                     } else {
                         if (totalDeletedItems > 0) {
-                            "Successfully deleted $deletedLogsCount logs older than 30 days${if (deletedBackupsCount > 0) " and $deletedBackupsCount backups" else ""}. Freed $freedStr!"
+                            "Purged $totalDeletedItems items older than 30 days. Freed $freedStr. Streaks, graph pillars, and daily goals preserved!"
                         } else {
-                            "No logs older than 30 days found. All your records are within the last 30 days."
+                            "No data older than 30 days found. All your records and backups are within the last 30 days!"
                         }
                     }
                     onComplete(freed, msg)
@@ -2990,6 +3219,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
 
                 try {
                     database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(PASSIVE)")
+                    database.openHelper.writableDatabase.execSQL("VACUUM")
                 } catch (e: Exception) {
                     Log.e("WaterViewModel", "Error checkpointing database", e)
                 }
@@ -3045,6 +3275,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
 
                 try {
                     database.openHelper.writableDatabase.execSQL("PRAGMA wal_checkpoint(PASSIVE)")
+                    database.openHelper.writableDatabase.execSQL("VACUUM")
                 } catch (e: Exception) {
                     Log.e("WaterViewModel", "Error checkpointing database", e)
                 }
@@ -3132,17 +3363,39 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             // 5. External files directory (app-specific)
-            context.getExternalFilesDir(null)?.let { extDir ->
-                if (extDir.exists()) {
-                    externalFilesBytes += getDirectorySize(extDir)
+            try {
+                context.getExternalFilesDirs(null)?.filterNotNull()?.forEach { extDir ->
+                    if (extDir.exists()) {
+                        externalFilesBytes += getDirectorySize(extDir)
+                    }
+                }
+            } catch (e: Exception) {
+                context.getExternalFilesDir(null)?.let { extDir ->
+                    if (extDir.exists()) {
+                        externalFilesBytes += getDirectorySize(extDir)
+                    }
                 }
             }
 
-            // 6. User device backups directory
+            // 6. User device backups directory (scan public Download, external root & app backups)
             try {
-                val backupDir = getBackupDirectory()
-                if (backupDir.exists()) {
-                    backupsFolderBytes += getDirectorySize(backupDir)
+                val candidateDirs = mutableListOf<java.io.File>()
+                try {
+                    val downloadDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    candidateDirs.add(java.io.File(downloadDir, "PixelWaterBackup"))
+                } catch (e: Exception) {}
+                try {
+                    val extDir = android.os.Environment.getExternalStorageDirectory()
+                    candidateDirs.add(java.io.File(extDir, "PixelWaterBackup"))
+                } catch (e: Exception) {}
+                try {
+                    candidateDirs.add(getBackupDirectory())
+                } catch (e: Exception) {}
+
+                candidateDirs.distinctBy { it.absolutePath }.forEach { bDir ->
+                    if (bDir.exists()) {
+                        backupsFolderBytes += getDirectorySize(bDir)
+                    }
                 }
             } catch (e: Exception) {
                 // Ignore if storage access issue
@@ -6549,8 +6802,14 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
 
+                val persistedGoalStreak = prefs.getInt("persisted_goal_streak", 0)
+                val finalStreak = maxOf(currentStreak, persistedGoalStreak)
+                if (currentStreak > persistedGoalStreak) {
+                    prefs.edit().putInt("persisted_goal_streak", currentStreak).apply()
+                }
+
                 val oldStreak = _streak.value
-                _streak.value = currentStreak
+                _streak.value = finalStreak
 
                 // Calculate the latest 10-day streak milestone reached
                 val earnedMilestone = (currentStreak / 10) * 10

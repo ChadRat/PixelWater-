@@ -433,17 +433,6 @@ fun TitleFaceToggle(
                             maxLines = 1,
                             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
-
-                        // Material 3 micro dot indicator below selected face
-                        Box(
-                            modifier = Modifier
-                                .padding(top = 2.dp)
-                                .size(3.dp)
-                                .background(
-                                    color = if (isSelected) MaterialTheme.colorScheme.onPrimary else Color.Transparent,
-                                    shape = CircleShape
-                                )
-                        )
                     }
                 }
             }

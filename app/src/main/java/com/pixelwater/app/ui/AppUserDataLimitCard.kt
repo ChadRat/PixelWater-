@@ -304,12 +304,12 @@ fun AppUserDataLimitCard(
                     }
                 }
 
-                // Delete data button (opens selection dialog for >30d, <=30d, or all data)
+                // Delete data button (opens confirmation dialog to delete user data while preserving goal streak)
                 Button(
                     onClick = {
                         viewModel.triggerButtonHaptic()
                         if (!isPurging && !isInjectingTestData) {
-                            selectedDeleteOption = if (olderCount > 0) 0 else if (recentCount > 0) 1 else 2
+                            selectedDeleteOption = 0
                             showDeleteSelectionDialog = true
                         }
                     },
@@ -355,6 +355,17 @@ fun AppUserDataLimitCard(
                     }
                 }
             }
+
+            // Streak preservation hint
+            Text(
+                text = if (appLanguage == "el")
+                    "• Η διαγραφή απελευθερώνει gigabytes δεδομένων και διατηρεί μόνο το σερί στόχου"
+                else
+                    "• Deletion actively frees gigabytes of data and only maintains your goal streak",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                lineHeight = 15.sp
+            )
         }
     }
 
@@ -366,13 +377,13 @@ fun AppUserDataLimitCard(
                 Icon(
                     imageVector = Icons.Rounded.DeleteSweep,
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.error,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(28.dp)
                 )
             },
             title = {
                 Text(
-                    text = if (appLanguage == "el") "Διαγραφή Δεδομένων" else "Delete Hydration Data",
+                    text = if (appLanguage == "el") "Διαγραφή Δεδομένων Χρήστη" else "Delete User Data",
                     fontWeight = FontWeight.Bold,
                     fontSize = 18.sp
                 )
@@ -384,20 +395,20 @@ fun AppUserDataLimitCard(
                 ) {
                     Text(
                         text = if (appLanguage == "el")
-                            "Επιλέξτε το εύρος δεδομένων που επιθυμείτε να διαγράψετε οριστικά:"
+                            "Επιλέξτε τρόπο διαγραφής. Η προτεινόμενη επιλογή απελευθερώνει gigabytes χώρου και διατηρεί μόνο το σερί στόχου:"
                         else
-                            "Select the range of hydration data you want to permanently delete:",
+                            "Select deletion mode. The recommended option frees gigabytes of data and only maintains your goal streak:",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
                     Spacer(modifier = Modifier.height(4.dp))
 
-                    // Option 0: Older than 30 days
+                    // Option 0: Actively delete gigabytes of data while strictly maintaining goal streak
                     Surface(
                         onClick = { selectedDeleteOption = 0 },
                         shape = RoundedCornerShape(12.dp),
-                        color = if (selectedDeleteOption == 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f) else MaterialTheme.colorScheme.surface,
+                        color = if (selectedDeleteOption == 0) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f) else MaterialTheme.colorScheme.surface,
                         border = androidx.compose.foundation.BorderStroke(
                             1.dp,
                             if (selectedDeleteOption == 0) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
@@ -415,16 +426,16 @@ fun AppUserDataLimitCard(
                             Spacer(modifier = Modifier.width(8.dp))
                             Column {
                                 Text(
-                                    text = if (appLanguage == "el") "Άνω των 30 ημερών (> 30d)" else "Older than 30 days (> 30d)",
-                                    fontWeight = FontWeight.SemiBold,
+                                    text = if (appLanguage == "el") "Διαγραφή Δεδομένων (Διατήρηση Σερί)" else "Delete User Data (Maintain Streak)",
+                                    fontWeight = FontWeight.Bold,
                                     fontSize = 13.sp,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
                                     text = if (appLanguage == "el")
-                                        "$olderCount καταγραφές (>30 ημ.) & παλιά αντίγραφα"
+                                        "Διαγράφει οριστικά gigabytes δεδομένων, παλιές καταγραφές & αντίγραφα. Διατηρεί μόνο το σερί στόχου!"
                                     else
-                                        "$olderCount logs (>30d) & old backups",
+                                        "Actively deletes gigabytes of historical logs, local backups & cache. Only maintains your goal streak!",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -521,7 +532,7 @@ fun AppUserDataLimitCard(
                             isPurging = true
                             when (selectedDeleteOption) {
                                 0 -> {
-                                    viewModel.purgeUserDataOlderThanMonth { _, message ->
+                                    viewModel.deleteUserDataAndMaintainStreak { _, message ->
                                         isPurging = false
                                         purgeResultDialogMessage = message
                                     }
@@ -547,7 +558,11 @@ fun AppUserDataLimitCard(
                     )
                 ) {
                     Text(
-                        text = if (appLanguage == "el") "Διαγραφή" else "Delete",
+                        text = if (selectedDeleteOption == 0) {
+                            if (appLanguage == "el") "Διαγραφή & Διατήρηση Σερί" else "Delete & Keep Streak"
+                        } else {
+                            if (appLanguage == "el") "Διαγραφή" else "Delete"
+                        },
                         fontWeight = FontWeight.Bold
                     )
                 }
