@@ -11,14 +11,7 @@ feel free to reach out for any suggestions, questions, or criticism ( hope not �
 
 ---
 
-## 📱 Screenshots
 
-<p align="center">
-  <img src="path/to/screenshot1.png" width="28%" alt="App Screenshot 1" />
-  <img src="path/to/screenshot2.png" width="28%" alt="App Screenshot 2" />
-  <img src="path/to/screenshot3.png" width="28%" alt="App Screenshot 3" />
-</p>
 
 ---
 
-feel free to reach out for any suggestions, questions, or criticism ( hope not ಠ_ಠ )
