@@ -83,18 +83,6 @@
             android:enabled="true"
             android:exported="false" />
 
-        <!-- Broadcast receiver for developer experimental quick add notification -->
-        <receiver
-            android:name=".receiver.DevNotificationReceiver"
-            android:enabled="true"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="COM_PIXELWATER_APP_DEV_QUICK_ADD_250" />
-                <action android:name="COM_PIXELWATER_APP_DEV_QUICK_ADD_500" />
-                <action android:name="COM_PIXELWATER_APP_DEV_NOTIFICATION_DISMISSED" />
-            </intent-filter>
-        </receiver>
-
         <!-- Home Screen Widget Receiver using Jetpack Glance -->
         <receiver
             android:name="com.pixelwater.app.widget.WaterTrackerWidgetReceiver"

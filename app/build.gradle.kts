@@ -153,7 +153,6 @@ tasks.register<Copy>("copyWearApkToAssets") {
   from(rootProject.file("wear/build/outputs/apk/debug"))
   into(file("src/main/assets"))
   include("wear-debug.apk")
-  rename("wear-debug.apk", "PixelWater_WearOS_App.apk")
 }
 
 tasks.register<Copy>("copyApkToVisibleFolder") {
@@ -163,11 +162,6 @@ tasks.register<Copy>("copyApkToVisibleFolder") {
   include("app-debug.apk")
 
   doLast {
-    copy {
-      from(layout.buildDirectory.dir("outputs/apk/debug"))
-      into(rootProject.projectDir)
-      include("app-debug.apk")
-    }
     copy {
       from(layout.buildDirectory.dir("outputs/apk/debug"))
       into(rootProject.file(".build-outputs"))

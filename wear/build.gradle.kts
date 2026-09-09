@@ -73,26 +73,12 @@ tasks.register<Copy>("copyWearApkToVisibleFolder") {
   from(layout.buildDirectory.dir("outputs/apk/debug"))
   into(rootProject.file("0_build-outputs"))
   include("wear-debug.apk")
-  rename("wear-debug.apk", "PixelWater_WearOS_App.apk")
 
   doLast {
     copy {
       from(layout.buildDirectory.dir("outputs/apk/debug"))
-      into(rootProject.projectDir)
-      include("wear-debug.apk")
-      rename("wear-debug.apk", "PixelWater_WearOS_App.apk")
-    }
-    copy {
-      from(layout.buildDirectory.dir("outputs/apk/debug"))
-      into(rootProject.file("0_build-outputs"))
-      include("wear-debug.apk")
-      rename("wear-debug.apk", "PixelWater_WearOS_App.apk")
-    }
-    copy {
-      from(layout.buildDirectory.dir("outputs/apk/debug"))
       into(rootProject.file(".build-outputs"))
       include("wear-debug.apk")
-      rename("wear-debug.apk", "PixelWater_WearOS_App.apk")
     }
   }
 }
@@ -105,9 +91,9 @@ tasks.whenTaskAdded {
 
 tasks.register("printApkSizes") {
   doLast {
-    val file1 = file("${rootDir}/PixelWater_WearOS_App.apk")
-    val file2 = file("${rootDir}/0_build-outputs/PixelWater_WearOS_App.apk")
-    println("APK_SIZE_ROOT: ${file1.length()} bytes")
-    println("APK_SIZE_BUILD_OUTPUTS: ${file2.length()} bytes")
+    val file1 = file("${rootDir}/0_build-outputs/wear-debug.apk")
+    val file2 = file("${rootDir}/.build-outputs/wear-debug.apk")
+    println("APK_SIZE_BUILD_OUTPUTS: ${file1.length()} bytes")
+    println("APK_SIZE_HIDDEN_OUTPUTS: ${file2.length()} bytes")
   }
 }
