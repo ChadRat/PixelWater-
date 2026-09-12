@@ -74,7 +74,7 @@ fun GimmickWallpaperWindow(
 
     // Interactive states synced with SHARED PREFERENCES
     var wallpaperType by remember { mutableStateOf(prefs.getString("gimmick_wallpaper_type", "MATERIAL_SHAPES") ?: "MATERIAL_SHAPES") }
-    var speed by remember { mutableStateOf(prefs.getFloat("gimmick_speed", 1.0f)) }
+    var speed by remember { mutableStateOf(prefs.getFloat("gimmick_speed", 1.0f).coerceIn(0.1f, 1.0f)) }
     var oledEnabled by remember { mutableStateOf(prefs.getBoolean("gimmick_oled_enabled", false)) }
     var rotationEnabled by remember { mutableStateOf(prefs.getBoolean("gimmick_rotation_enabled", true)) }
     var rgbLoop by remember { mutableStateOf(prefs.getBoolean("gimmick_rgb_loop", false)) }
@@ -548,8 +548,9 @@ fun GimmickWallpaperWindow(
     }
 
     fun updateSpeed(newSpeed: Float) {
-        speed = newSpeed
-        prefs.edit().putFloat("gimmick_speed", newSpeed).apply()
+        val capped = newSpeed.coerceIn(0.1f, 1.0f)
+        speed = capped
+        prefs.edit().putFloat("gimmick_speed", capped).apply()
     }
 
     fun updateOled(enabled: Boolean) {
@@ -2294,9 +2295,9 @@ fun GimmickWallpaperWindow(
                                         Text("${String.format("%.2f", speed)}x", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                     }
                                     Slider(
-                                        value = speed,
+                                        value = speed.coerceIn(0.1f, 1.0f),
                                         onValueChange = { updateSpeed(it) },
-                                        valueRange = 0.1f..4.0f
+                                        valueRange = 0.1f..1.0f
                                     )
                                 }
 

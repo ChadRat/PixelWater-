@@ -47,12 +47,22 @@ fun PixelWaterDivider(
     thickness: Dp = 1.dp,
     paddingVertical: Dp = 12.dp
 ) {
-    val contrast = LocalSettingsDividerContrast.current
-    val contrastMultiplier = when (contrast) {
-        "LOW" -> 0.4f
-        "HIGH" -> 2.2f
-        else -> 1.0f
+    val isTransparent = LocalTransparentComponentsEnabled.current
+    val isFrosted = LocalFrostedGlassEnabled.current
+    // The glass theme should not make squiggly lines disappear
+    if ((isTransparent || isFrosted) && style != "SQUIGGLY") {
+        val gapScale = LocalSettingsGapScale.current
+        val gapHeight = (if (paddingVertical > 0.dp) paddingVertical else 8.dp) * gapScale
+        Spacer(
+            modifier = modifier
+                .height(gapHeight)
+                .layoutId("divider")
+        )
+        return
     }
+
+    // Divider line contrast is permanently locked to highest contrast option (2.2f)
+    val contrastMultiplier = 2.2f
 
     val finalColor = if (color == Color.Transparent) {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f * contrastMultiplier)
@@ -65,9 +75,9 @@ fun PixelWaterDivider(
             SquigglyDivider(
                 modifier = modifier.padding(vertical = paddingVertical),
                 color = finalColor.copy(alpha = (finalColor.alpha * 2.5f).coerceIn(0f, 1f)),
-                thickness = 1.5.dp,
-                waveLength = 12.dp,
-                waveHeight = 3.dp
+                thickness = 2.5.dp,
+                waveLength = 16.dp,
+                waveHeight = 5.dp
             )
         }
         "GAPS" -> {
@@ -97,12 +107,22 @@ fun HorizontalDivider(
     color: Color = Color.Transparent
 ) {
     val style = LocalSettingsDividerStyle.current
-    val contrast = LocalSettingsDividerContrast.current
-    val contrastMultiplier = when (contrast) {
-        "LOW" -> 0.4f
-        "HIGH" -> 2.2f
-        else -> 1.0f
+    val isTransparent = LocalTransparentComponentsEnabled.current
+    val isFrosted = LocalFrostedGlassEnabled.current
+    // The glass theme should not make squiggly lines disappear
+    if ((isTransparent || isFrosted) && style != "SQUIGGLY") {
+        val gapScale = LocalSettingsGapScale.current
+        val basePadding = if (paddingVertical > 0.dp) paddingVertical * 2 else 8.dp
+        val gapHeight = basePadding * gapScale
+        Spacer(
+            modifier = modifier
+                .height(gapHeight)
+                .layoutId("divider")
+        )
+        return
     }
+    // Divider line contrast is permanently locked to highest contrast option (2.2f)
+    val contrastMultiplier = 2.2f
 
     val finalColor = if (color == Color.Transparent) {
         MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f * contrastMultiplier)
@@ -115,9 +135,9 @@ fun HorizontalDivider(
             SquigglyDivider(
                 modifier = modifier.padding(vertical = paddingVertical),
                 color = finalColor.copy(alpha = (finalColor.alpha * 2.5f).coerceIn(0f, 1f)),
-                thickness = 1.5.dp,
-                waveLength = 12.dp,
-                waveHeight = 3.dp
+                thickness = 2.5.dp,
+                waveLength = 16.dp,
+                waveHeight = 5.dp
             )
         }
         "GAPS" -> {
@@ -144,9 +164,9 @@ fun HorizontalDivider(
 fun SquigglyDivider(
     modifier: Modifier = Modifier,
     color: Color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.2f),
-    thickness: Dp = 1.5.dp,
-    waveLength: Dp = 12.dp,
-    waveHeight: Dp = 3.dp
+    thickness: Dp = 2.5.dp,
+    waveLength: Dp = 16.dp,
+    waveHeight: Dp = 5.dp
 ) {
     val density = LocalDensity.current
     Canvas(

@@ -354,36 +354,6 @@ fun MyApplicationTheme(
     )
   }
 
-  if (isFrostedGlassEnabled) {
-      val glassPrimary = if (darkTheme) {
-          ensureTextContrast(colorScheme.primary, isDark = true)
-      } else {
-          val hsl = FloatArray(3)
-          androidx.core.graphics.ColorUtils.colorToHSL(colorScheme.primary.toArgb(), hsl)
-          hsl[1] = hsl[1].coerceAtLeast(0.70f)
-          hsl[2] = 0.72f
-          Color(androidx.core.graphics.ColorUtils.HSLToColor(hsl))
-      }
-
-      colorScheme = colorScheme.copy(
-        background = Color.Transparent,
-        surface = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.22f),
-        surfaceVariant = if (darkTheme) Color.White.copy(alpha = 0.08f) else Color.White.copy(alpha = 0.16f),
-        primary = glassPrimary,
-        onPrimary = if (androidx.core.graphics.ColorUtils.calculateLuminance(glassPrimary.toArgb()) > 0.5) Color(0xFF101828) else Color.White,
-        primaryContainer = if (darkTheme) Color.White.copy(alpha = 0.16f) else Color.White.copy(alpha = 0.26f),
-        onPrimaryContainer = Color.White,
-        secondaryContainer = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.20f),
-        onSecondaryContainer = Color.White,
-        tertiaryContainer = if (darkTheme) Color.White.copy(alpha = 0.12f) else Color.White.copy(alpha = 0.20f),
-        onTertiaryContainer = Color.White,
-        onSurface = Color(0xFFF9FAFB),
-        onSurfaceVariant = Color(0xFFE2E8F0),
-        onBackground = Color(0xFFF9FAFB),
-        outline = if (darkTheme) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.55f),
-        outlineVariant = if (darkTheme) Color.White.copy(alpha = 0.18f) else Color.White.copy(alpha = 0.30f),
-      )
-  }
 
   if (oledModeEnabled && darkTheme) {
     colorScheme = colorScheme.copy(

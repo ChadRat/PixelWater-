@@ -71,16 +71,8 @@ dependencies {
 tasks.register<Copy>("copyWearApkToVisibleFolder") {
   outputs.upToDateWhen { false }
   from(layout.buildDirectory.dir("outputs/apk/debug"))
-  into(rootProject.file("0_build-outputs"))
+  into(rootProject.file("build-outputs"))
   include("wear-debug.apk")
-
-  doLast {
-    copy {
-      from(layout.buildDirectory.dir("outputs/apk/debug"))
-      into(rootProject.file(".build-outputs"))
-      include("wear-debug.apk")
-    }
-  }
 }
 
 tasks.whenTaskAdded {
@@ -91,9 +83,7 @@ tasks.whenTaskAdded {
 
 tasks.register("printApkSizes") {
   doLast {
-    val file1 = file("${rootDir}/0_build-outputs/wear-debug.apk")
-    val file2 = file("${rootDir}/.build-outputs/wear-debug.apk")
+    val file1 = file("${rootDir}/build-outputs/wear-debug.apk")
     println("APK_SIZE_BUILD_OUTPUTS: ${file1.length()} bytes")
-    println("APK_SIZE_HIDDEN_OUTPUTS: ${file2.length()} bytes")
   }
 }

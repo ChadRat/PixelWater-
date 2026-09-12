@@ -104,7 +104,7 @@ class GlowShapesWallpaperService : WallpaperService() {
 
             // Retrieve current gimmick configurations
             val wallpaperType = prefs.getString("gimmick_wallpaper_type", "MATERIAL_SHAPES") ?: "MATERIAL_SHAPES"
-            val speed = prefs.getFloat("gimmick_speed", 1.0f)
+            val speed = (prefs.getFloat("gimmick_speed", 1.0f) * 0.6f).coerceIn(0.01f, 0.6f)
             val oledEnabled = prefs.getBoolean("gimmick_oled_enabled", false)
             val rotationEnabled = prefs.getBoolean("gimmick_rotation_enabled", true)
             val rgbLoop = prefs.getBoolean("gimmick_rgb_loop", false)

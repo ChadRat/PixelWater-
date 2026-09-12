@@ -142,6 +142,11 @@ fun SettingsSearchDialog(
                 "appearance"
             ),
             Triple(
+                if (appLanguage == "el") "Υπενθυμίσεις Ενυδάτωσης" else "Hydration Reminders",
+                if (appLanguage == "el") "Ώρες έναρξης/λήξης, διάστημα ειδοποιήσεων και μηνύματα AI Coach" else "Active hours, notification intervals, and AI Coach push reminders",
+                "reminders"
+            ),
+            Triple(
                 if (appLanguage == "el") "Απτική Ανάδραση (Haptics)" else "Haptic Feedback (Haptics)",
                 if (appLanguage == "el") "Προσαρμόστε τις δονήσεις για κουμπιά, sliders και στόχους" else "Customize sliders, buttons, and target-reached vibrations",
                 "haptics"
@@ -511,6 +516,7 @@ fun SettingsSearchDialog(
                                     ) {
                                         val icon = when(item.third) {
                                             "appearance" -> Icons.Rounded.Palette
+                                            "reminders" -> Icons.Rounded.Notifications
                                             "haptics" -> Icons.Rounded.TouchApp
                                             "widget_settings" -> Icons.Rounded.Widgets
                                             "ai_integration" -> Icons.Rounded.Psychology

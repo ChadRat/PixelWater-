@@ -1238,6 +1238,7 @@ private fun WearDialogContainer(
     }
     
     val cornerRadius = maxOf(28, generalCornerRadius).dp
+    val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
     
     androidx.compose.ui.window.Dialog(
         onDismissRequest = onDismissRequest,
@@ -1248,7 +1249,7 @@ private fun WearDialogContainer(
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
                 .then(
-                    if (isBlurEffect) Modifier.shadow(
+                    if (isBlurEffect && !isFrostedGlassEnabled) Modifier.shadow(
                         elevation = 16.dp,
                         shape = RoundedCornerShape(cornerRadius),
                         ambientColor = Color.Black.copy(alpha = 0.2f),
@@ -1262,7 +1263,7 @@ private fun WearDialogContainer(
                 modifier = Modifier
                     .matchParentSize()
                     .then(
-                        if (isFrostedGlassEnabled || isBlurEffect) Modifier.blur(
+                        if (isBlurEffect && !isFrostedGlassEnabled) Modifier.blur(
                             radius = 24.dp,
                             edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(RoundedCornerShape(cornerRadius))
                         ) else Modifier
@@ -1274,13 +1275,7 @@ private fun WearDialogContainer(
                     .then(
                         if (isFrostedGlassEnabled) Modifier.border(
                             width = 1.dp,
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.45f),
-                                    Color.White.copy(alpha = 0.12f),
-                                    Color.Transparent
-                                )
-                            ),
+                            brush = GlassTheme.getCardBorderBrush(isDark),
                             shape = RoundedCornerShape(cornerRadius)
                         ) else Modifier
                     )
@@ -1291,12 +1286,7 @@ private fun WearDialogContainer(
                     modifier = Modifier
                         .matchParentSize()
                         .background(
-                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = (frostedTransparency * 0.16f).coerceIn(0.04f, 0.30f)),
-                                    Color.White.copy(alpha = (frostedTransparency * 0.05f).coerceIn(0.01f, 0.15f))
-                                )
-                            ),
+                            brush = GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency),
                             shape = RoundedCornerShape(cornerRadius)
                         )
                 )
@@ -1490,6 +1480,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
     val updateStatus by viewModel.updateStatus.collectAsStateWithLifecycle()
     val lightModeDarkTextEnabled by viewModel.lightModeDarkTextEnabled.collectAsStateWithLifecycle()
     val separateSettingsTabEnabled by viewModel.separateSettingsTabEnabled.collectAsStateWithLifecycle()
+    val remindersInSettings by viewModel.remindersInSettings.collectAsStateWithLifecycle()
 
     val currentPrimaryColor = MaterialTheme.colorScheme.primary
     val currentSecondaryColor = MaterialTheme.colorScheme.secondary
@@ -1549,6 +1540,13 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
     var currentTab by remember { mutableStateOf(0) } // 0: Today, 1: Stats, 2: AI Coach, 3: Reminders, 4: Settings
     var tabClicksList by remember { mutableStateOf(List(5) { 0 }) }
     var settingsSubPage by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(remindersInSettings) {
+        if (remindersInSettings && currentTab == 3) {
+            currentTab = 4
+            settingsSubPage = "reminders"
+        }
+    }
     var showSettingsSearch by remember { mutableStateOf(false) }
     var showNerdModePopup by remember { mutableStateOf(false) }
     var showConfigInfoDialog by remember { mutableStateOf(false) }
@@ -1713,7 +1711,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
     val experimentalCardScale by viewModel.experimentalCardScale.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize().background(bgBrush)) {
-        if (materialShapesEnabled && !isFrostedGlassEnabled) {
+        if (materialShapesEnabled) {
             MaterialShapesBackground(
                 modifier = Modifier,
                 rotationEnabled = shapeRotationEnabled,
@@ -1733,7 +1731,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                 rotMultD = shapeRotMultD,
                 viewModel = viewModel
             )
-        } else if (auraGlowEnabled && !isFrostedGlassEnabled) {
+        } else if (auraGlowEnabled) {
             AuraGlowBackground(
                 modifier = Modifier,
                 rotationEnabled = shapeRotationEnabled,
@@ -1810,7 +1808,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
             LocalExperimentalHueShiftDuration provides viewModel.experimentalHueShiftDuration.collectAsStateWithLifecycle().value,
             LocalAppTheme provides appTheme,
             LocalSettingsDividerStyle provides viewModel.settingsDividerStyle.collectAsStateWithLifecycle().value,
-            LocalSettingsDividerContrast provides viewModel.settingsDividerContrast.collectAsStateWithLifecycle().value,
+            LocalSettingsDividerContrast provides "HIGH",
             LocalSettingsGapScale provides viewModel.settingsGapScale.collectAsStateWithLifecycle().value,
             LocalSettingsAdaptiveGrouping provides viewModel.settingsAdaptiveGrouping.collectAsStateWithLifecycle().value,
             LocalSettingsAdaptiveCornerRadius provides viewModel.settingsAdaptiveCornerRadius.collectAsStateWithLifecycle().value,
@@ -1826,15 +1824,73 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
 
             val swipeThreshold = 450f
             val isUnlatched = isDragging && kotlin.math.abs(dragOffsetValue) > swipeThreshold
+            val visibleTabs = remember(remindersInSettings) {
+                if (remindersInSettings) listOf(0, 1, 2, 4) else listOf(0, 1, 2, 3, 4)
+            }
             val targetSwipeIndex = if (dragOffsetValue > 0f) {
-                if (currentTab == 0) 4 else if (currentTab > 0) currentTab - 1 else null
+                val currIdx = visibleTabs.indexOf(currentTab)
+                if (currIdx != -1) {
+                    val prevIdx = if (currIdx == 0) visibleTabs.size - 1 else currIdx - 1
+                    visibleTabs[prevIdx]
+                } else null
             } else if (dragOffsetValue < 0f) {
-                if (currentTab < 4) currentTab + 1 else null
+                val currIdx = visibleTabs.indexOf(currentTab)
+                if (currIdx != -1) {
+                    val nextIdx = if (currIdx == visibleTabs.size - 1) 0 else currIdx + 1
+                    visibleTabs[nextIdx]
+                } else null
             } else {
                 null
             }
 
+            val navBarStyle by viewModel.navBarStyle.collectAsStateWithLifecycle()
+            var isNavBarVisible by remember { mutableStateOf(true) }
+
+            LaunchedEffect(currentTab) {
+                isNavBarVisible = true
+            }
+
+            val navBarNestedScrollConnection = remember {
+                object : NestedScrollConnection {
+                    override fun onPreScroll(
+                        available: androidx.compose.ui.geometry.Offset,
+                        source: NestedScrollSource
+                    ): androidx.compose.ui.geometry.Offset {
+                        val delta = available.y
+                        if (delta < -8f) {
+                            if (isNavBarVisible) {
+                                isNavBarVisible = false
+                            }
+                        } else if (delta > 8f) {
+                            if (!isNavBarVisible) {
+                                isNavBarVisible = true
+                            }
+                        }
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+
+                    override fun onPostScroll(
+                        consumed: androidx.compose.ui.geometry.Offset,
+                        available: androidx.compose.ui.geometry.Offset,
+                        source: NestedScrollSource
+                    ): androidx.compose.ui.geometry.Offset {
+                        val delta = available.y
+                        if (delta < -8f) {
+                            if (isNavBarVisible) {
+                                isNavBarVisible = false
+                            }
+                        } else if (delta > 8f) {
+                            if (!isNavBarVisible) {
+                                isNavBarVisible = true
+                            }
+                        }
+                        return androidx.compose.ui.geometry.Offset.Zero
+                    }
+                }
+            }
+
             Scaffold(
+                contentWindowInsets = WindowInsets.statusBars,
                 bottomBar = {
              // Floating Pill Navigation Bar from reference photos with gradual blur backdrop scrim
              val separateSettingsTabEnabled by viewModel.separateSettingsTabEnabled.collectAsStateWithLifecycle()
@@ -1846,8 +1902,25 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                  MaterialTheme.colorScheme.background
              }
 
+             val imeBottomInsets = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+             val isKeyboardActive = imeBottomInsets > 20.dp
+             val showNavBar = isNavBarVisible && !isKeyboardActive
+
+             val navBarTranslationY by androidx.compose.animation.core.animateFloatAsState(
+                 targetValue = if (showNavBar) 0f else with(density) { 140.dp.toPx() },
+                 animationSpec = androidx.compose.animation.core.spring(
+                     dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                     stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                 ),
+                 label = "nav_bar_slide"
+             )
+
              Box(
-                 modifier = Modifier.fillMaxWidth(),
+                 modifier = Modifier
+                     .fillMaxWidth()
+                     .graphicsLayer {
+                         translationY = navBarTranslationY
+                     },
                  contentAlignment = Alignment.BottomCenter
              ) {
                  // Soft feather gradient behind floating bottom bar without blackening or whitening
@@ -1864,12 +1937,16 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                              )
                          )
                  )
+                 val isThickMode = navBarStyle == "THICK" || navBarStyle == "FULL"
                  Row(
                      modifier = Modifier
                          .fillMaxWidth()
-                         .padding(horizontal = 16.dp, vertical = 8.dp)
+                         .padding(
+                             horizontal = 16.dp,
+                             vertical = 8.dp
+                         )
                          .navigationBarsPadding(),
-                     horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+                     horizontalArrangement = Arrangement.spacedBy(if (isThickMode) 14.dp else 12.dp, Alignment.CenterHorizontally),
                      verticalAlignment = Alignment.CenterVertically
                  ) {
                   val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
@@ -1917,39 +1994,43 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                               }
                           )
                           .then(
-                              if (navBarBorderBrush != null) {
-                                  Modifier.border(
-                                      width = 1.dp,
-                                      brush = navBarBorderBrush,
-                                      shape = navBarShape
-                                  )
+                              if (!isDark) {
+                                  if (navBarBorderBrush != null) {
+                                      Modifier.border(
+                                          width = 1.dp,
+                                          brush = navBarBorderBrush,
+                                          shape = navBarShape
+                                      )
+                                  } else {
+                                      Modifier.border(
+                                          width = 1.dp,
+                                          color = navBarBorderColor,
+                                          shape = navBarShape
+                                      )
+                                  }
                               } else {
-                                  Modifier.border(
-                                      width = 1.dp,
-                                      color = navBarBorderColor,
-                                      shape = navBarShape
-                                  )
+                                  Modifier
                               }
                           )
-                          .padding(horizontal = 6.dp, vertical = 6.dp),
+                          .padding(
+                              horizontal = if (isThickMode) 12.dp else 8.dp,
+                              vertical = if (isThickMode) 8.dp else 6.dp
+                          ),
                       verticalAlignment = Alignment.CenterVertically,
-                      horizontalArrangement = Arrangement.spacedBy(4.dp)
+                      horizontalArrangement = Arrangement.spacedBy(if (isThickMode) 6.dp else 4.dp)
                   ) {
-                     val tabs = if (separateSettingsTabEnabled) {
-                         listOf(
-                             Triple(0, if (appLanguage == "el") "Καταγραφή" else "Track", Icons.Rounded.WaterDrop),
-                             Triple(1, if (appLanguage == "el") "Στατιστικά" else "Stats", Icons.Rounded.BarChart),
-                             Triple(2, if (appLanguage == "el") "Σύμβουλος AI" else "AI Coach", Icons.Rounded.SmartToy),
-                             Triple(3, if (appLanguage == "el") "Ειδοποιήσεις" else "Reminders", Icons.Rounded.Notifications)
-                         )
-                     } else {
-                         listOf(
-                             Triple(0, if (appLanguage == "el") "Καταγραφή" else "Track", Icons.Rounded.WaterDrop),
-                             Triple(1, if (appLanguage == "el") "Στατιστικά" else "Stats", Icons.Rounded.BarChart),
-                             Triple(2, if (appLanguage == "el") "Σύμβουλος AI" else "AI Coach", Icons.Rounded.SmartToy),
-                             Triple(3, if (appLanguage == "el") "Ειδοποιήσεις" else "Reminders", Icons.Rounded.Notifications),
-                             Triple(4, if (appLanguage == "el") "Ρυθμίσεις" else "Settings", Icons.Rounded.Settings)
-                         )
+                     val tabs = remember(separateSettingsTabEnabled, remindersInSettings, appLanguage) {
+                         val list = mutableListOf<Triple<Int, String, androidx.compose.ui.graphics.vector.ImageVector>>()
+                         list.add(Triple(0, if (appLanguage == "el") "Καταγραφή" else "Track", Icons.Rounded.WaterDrop))
+                         list.add(Triple(1, if (appLanguage == "el") "Στατιστικά" else "Stats", Icons.Rounded.BarChart))
+                         list.add(Triple(2, if (appLanguage == "el") "Σύμβουλος AI" else "AI Coach", Icons.Rounded.SmartToy))
+                         if (!remindersInSettings) {
+                             list.add(Triple(3, if (appLanguage == "el") "Ειδοποιήσεις" else "Reminders", Icons.Rounded.Notifications))
+                         }
+                         if (!separateSettingsTabEnabled) {
+                             list.add(Triple(4, if (appLanguage == "el") "Ρυθμίσεις" else "Settings", Icons.Rounded.Settings))
+                         }
+                         list
                      }
 
                      val density = androidx.compose.ui.platform.LocalDensity.current
@@ -1987,10 +2068,9 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                          val isUnlatchedTarget = isUnlatched && index == targetSwipeIndex
                          val tabScale by androidx.compose.animation.core.animateFloatAsState(
                              targetValue = when {
-                                 isUnlatchedTarget -> 1.25f
-                                 isUnlatched && isSelected -> 0.82f
-                                 isSelected -> 1.08f
-                                 else -> 0.94f
+                                 isUnlatchedTarget -> 1.20f
+                                 isUnlatched && isSelected -> 0.85f
+                                 else -> 1.0f
                              },
                              animationSpec = androidx.compose.animation.core.spring(
                                  dampingRatio = bounceDamping,
@@ -2091,22 +2171,25 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                                  }
                                                  viewModel.triggerTabClickHaptic(index)
                                              }
-                                             .padding(horizontal = 14.dp, vertical = 8.dp),
+                                             .padding(
+                                                 horizontal = if (isThickMode) 16.dp else 13.dp,
+                                                 vertical = if (isThickMode) 10.dp else 8.dp
+                                             ),
                                          verticalAlignment = Alignment.CenterVertically,
-                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                         horizontalArrangement = Arrangement.spacedBy(if (isThickMode) 10.dp else 8.dp)
                                      ) {
                                          AnimatedTabIcon(
                                              index = index,
                                              isSelected = true,
                                              tint = activeContentColor,
-                                             modifier = Modifier.size(24.dp),
+                                             modifier = Modifier.size(if (isThickMode) 26.dp else 24.dp),
                                              coachProgressValue = coachAnimState?.value ?: 0f,
                                              animationTrigger = tabClicksList[index]
                                          )
                                          Text(
                                              text = label,
                                              color = activeContentColor,
-                                             fontSize = 14.sp,
+                                             fontSize = if (isThickMode) 15.sp else 14.sp,
                                              fontWeight = FontWeight.Black
                                          )
                                      }
@@ -2114,7 +2197,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                      // Inactive simple transparent circle icon button
                                      Box(
                                          modifier = Modifier
-                                             .requiredSize(40.dp)
+                                             .requiredSize(if (isThickMode) 46.dp else 40.dp)
                                              .background(inactiveBgColor, shape = CircleShape)
                                              .clip(CircleShape)
                                              .clickable {
@@ -2133,8 +2216,8 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                          AnimatedTabIcon(
                                              index = index,
                                              isSelected = false,
-                                             tint = if (isFrostedGlass) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f),
-                                             modifier = Modifier.size(24.dp),
+                                             tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                                             modifier = Modifier.size(if (isThickMode) 26.dp else 24.dp),
                                              coachProgressValue = coachAnimState?.value ?: 0f,
                                              animationTrigger = tabClicksList[index]
                                          )
@@ -2151,10 +2234,9 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                      val isUnlatchedTarget = isUnlatched && index == targetSwipeIndex
                      val tabScale by androidx.compose.animation.core.animateFloatAsState(
                          targetValue = when {
-                             isUnlatchedTarget -> 1.25f
-                             isUnlatched && isSelected -> 0.82f
-                             isSelected -> 1.08f
-                             else -> 0.94f
+                             isUnlatchedTarget -> 1.20f
+                             isUnlatched && isSelected -> 0.85f
+                             else -> 1.0f
                          },
                          animationSpec = androidx.compose.animation.core.spring(
                              dampingRatio = bounceDamping,
@@ -2197,7 +2279,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                          targetValue = if (isSelected) {
                              if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary
                          } else {
-                             if (isFrostedGlass) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
+                             if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                          },
                          animationSpec = androidx.compose.animation.core.spring(
                              stiffness = androidx.compose.animation.core.Spring.StiffnessMedium
@@ -2207,7 +2289,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
 
                      Box(
                          modifier = Modifier
-                             .requiredSize(52.dp)
+                             .requiredSize(if (isThickMode) 64.dp else 52.dp)
                              .graphicsLayer {
                                  scaleX = tabScale
                                  scaleY = tabScale
@@ -2230,26 +2312,30 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                  }
                              )
                              .then(
-                                 if (navBarBorderBrush != null) {
-                                     Modifier.border(
-                                         width = 1.dp,
-                                         brush = navBarBorderBrush,
-                                         shape = CircleShape
-                                     )
+                                 if (!isDark) {
+                                     if (navBarBorderBrush != null) {
+                                         Modifier.border(
+                                             width = 1.dp,
+                                             brush = navBarBorderBrush,
+                                             shape = CircleShape
+                                         )
+                                     } else {
+                                         Modifier.border(
+                                             width = 1.dp,
+                                             color = navBarBorderColor,
+                                             shape = CircleShape
+                                         )
+                                     }
                                  } else {
-                                     Modifier.border(
-                                         width = 1.dp,
-                                         color = navBarBorderColor,
-                                         shape = CircleShape
-                                     )
+                                     Modifier
                                  }
                              )
-                             .padding(6.dp),
+                             .padding(if (isThickMode) 9.dp else 6.dp),
                          contentAlignment = Alignment.Center
                      ) {
                          Box(
                              modifier = Modifier
-                                 .requiredSize(40.dp)
+                                 .requiredSize(if (isThickMode) 46.dp else 40.dp)
                                  .background(animatedBgColor, shape = CircleShape)
                                  .clip(CircleShape)
                                  .clickable(
@@ -2269,7 +2355,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                  index = index,
                                  isSelected = isSelected,
                                  tint = animatedIconColor,
-                                 modifier = Modifier.requiredSize(24.dp),
+                                 modifier = Modifier.requiredSize(if (isThickMode) 26.dp else 24.dp),
                                  coachProgressValue = 0f,
                                  animationTrigger = tabClicksList[index]
                              )
@@ -2282,7 +2368,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
         floatingActionButton = {
         },
         containerColor = Color.Transparent,
-        modifier = modifier.fillMaxSize().then(
+        modifier = modifier.fillMaxSize().nestedScroll(navBarNestedScrollConnection).then(
             if (scaffoldBlur > 0.dp) Modifier.blur(
                 radius = scaffoldBlur,
                 edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment.Unbounded
@@ -2327,10 +2413,17 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                 onDragEnd = {
                                     val finalVal = dragOffsetValue
                                     if (kotlin.math.abs(finalVal) > swipeThreshold) {
-                                        val nextTab = if (finalVal > 0f) {
-                                            if (currentTab == 0) 4 else (currentTab - 1).coerceIn(0, 4)
+                                        val currIdx = visibleTabs.indexOf(currentTab)
+                                        val nextTab = if (currIdx != -1) {
+                                            if (finalVal > 0f) {
+                                                val prevIdx = if (currIdx == 0) visibleTabs.size - 1 else currIdx - 1
+                                                visibleTabs[prevIdx]
+                                            } else {
+                                                val nextIdx = if (currIdx == visibleTabs.size - 1) 0 else currIdx + 1
+                                                visibleTabs[nextIdx]
+                                            }
                                         } else {
-                                            (currentTab + 1).coerceIn(0, 4)
+                                            0
                                         }
                                         if (overrideSwipeHapticsEnabled) {
                                             viewModel.triggerTabClickHaptic(nextTab)
@@ -2469,23 +2562,56 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
             }
         ) { targetTab ->
             if (targetTab == 2) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = padding.calculateTopPadding())
-                    .padding(bottom = padding.calculateBottomPadding())
-            ) {
-                AskGeminiScreen(
-                    viewModel = viewModel,
-                    chatMessages = chatMessages,
-                    chatLoading = chatLoading,
-                    chatError = chatError,
-                    isDark = isDark,
-                    isOledActive = isOledActive,
-                    appLanguage = appLanguage
-                )
-            }
-        } else if (targetTab == 4) {
+                BoxWithConstraints(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    val screenHeightDp = androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp.dp
+                    val sysNavBottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                    val imeBottom = WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+                    val isKeyboardOpen = imeBottom > 20.dp
+                    val windowAlreadyResized = isKeyboardOpen && (maxHeight < screenHeightDp - 80.dp)
+
+                    val targetCoachBottomPadding = if (isKeyboardOpen) {
+                        if (windowAlreadyResized) {
+                            4.dp
+                        } else {
+                            imeBottom
+                        }
+                    } else if (isNavBarVisible) {
+                        padding.calculateBottomPadding()
+                    } else {
+                        maxOf(sysNavBottom, 4.dp)
+                    }
+
+                    val animatedCoachBottomPadding by androidx.compose.animation.core.animateDpAsState(
+                        targetValue = targetCoachBottomPadding,
+                        animationSpec = androidx.compose.animation.core.spring(
+                            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                        ),
+                        label = "coach_bottom_padding"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(top = padding.calculateTopPadding())
+                            .padding(bottom = animatedCoachBottomPadding)
+                    ) {
+                        AskGeminiScreen(
+                            viewModel = viewModel,
+                            chatMessages = chatMessages,
+                            chatLoading = chatLoading,
+                            chatError = chatError,
+                            isDark = isDark,
+                            isOledActive = isOledActive,
+                            appLanguage = appLanguage,
+                            isNavBarVisible = isNavBarVisible,
+                            onNavBarVisibilityChange = { isNavBarVisible = it }
+                        )
+                    }
+                }
+            } else if (targetTab == 4) {
             val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
 
             androidx.compose.animation.AnimatedContent(
@@ -2601,6 +2727,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                     item {
                         val pageTitle = when (subPage) {
                             "appearance" -> if (appLanguage == "el") "Εμφάνιση" else "Appearance"
+                            "reminders" -> if (appLanguage == "el") "Υπενθυμίσεις" else "Reminders"
                             "haptics" -> if (appLanguage == "el") "Απτική ανάδραση" else "Haptic Feedback"
                             "widget_settings" -> if (appLanguage == "el") "Μικροεφαρμογή" else "Widget Settings"
                             "wear_os_settings" -> if (appLanguage == "el") "Ρυθμίσεις Wear OS" else "Wear OS Integration"
@@ -2655,14 +2782,14 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                                             contentDescription = "Go back",
-                                            tint = if (isDark || isFrostedGlassEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                            tint = if (isDark) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
 
                                     Column {
                                         Text(
                                             text = pageTitle,
-                                            color = if (isDark || isFrostedGlassEnabled) Color.White else MaterialTheme.colorScheme.onBackground,
+                                            color = if (isDark) Color.White else MaterialTheme.colorScheme.onBackground,
                                             fontSize = 32.sp,
                                             fontWeight = FontWeight.Black,
                                             letterSpacing = (-0.5).sp,
@@ -2695,7 +2822,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                             modifier = Modifier
                                                 .background(
                                                     color = when {
-                                                        isFrostedGlassEnabled -> Color.Transparent
+                                                        isFrostedGlassEnabled -> GlassTheme.getSubCardColor(isDark)
                                                         !isDark -> if (vividLightBoxesEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
                                                         else -> MaterialTheme.colorScheme.surfaceVariant
                                                     },
@@ -2704,7 +2831,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                                 .border(
                                                     width = 1.dp,
                                                     color = when {
-                                                        isFrostedGlassEnabled -> Color.Transparent
+                                                        isFrostedGlassEnabled -> GlassTheme.getSubCardBorderColor(isDark)
                                                         !isDark -> if (vividLightBoxesEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.50f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                                         else -> MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
                                                     },
@@ -2725,7 +2852,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                                         viewModel.updateConfigProfile(newProfile)
                                                         viewModel.triggerButtonHaptic()
                                                         if (newProfile == "NERD_MODE") {
-                                                            showNerdModePopup = true
+                                                             showNerdModePopup = true
                                                         }
                                                     },
                                                 contentAlignment = Alignment.Center
@@ -2733,18 +2860,20 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                                 Icon(
                                                     imageVector = Icons.Rounded.AutoAwesome,
                                                     contentDescription = if (isNerdActive) "Active: Nerd Mode. Toggle to Plug & Play." else "Active: Plug & Play. Toggle to Nerd Mode.",
-                                                    tint = if (isNerdActive) MaterialTheme.colorScheme.primary else (if (!isDark && !isFrostedGlassEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)),
+                                                    tint = if (isNerdActive) MaterialTheme.colorScheme.primary else (if (!isDark) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant),
                                                     modifier = Modifier.size(20.dp)
                                                 )
                                             }
 
-                                            // Tiny vertical separator
-                                            Box(
-                                                modifier = Modifier
-                                                    .width(1.dp)
-                                                    .height(16.dp)
-                                                    .background(if (!isDark && !isFrostedGlassEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.40f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                                            )
+                                            // Tiny vertical separator (hidden during transparency)
+                                            if (!isFrostedGlassEnabled && !transparentComponentsEnabled) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(1.dp)
+                                                        .height(16.dp)
+                                                        .background(if (!isDark) MaterialTheme.colorScheme.primary.copy(alpha = 0.40f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                                )
+                                            }
 
                                             // Right icon button: Downward arrow for info
                                             val rightInteractionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -2763,7 +2892,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                                 Icon(
                                                     imageVector = Icons.Rounded.KeyboardArrowDown,
                                                     contentDescription = "Show profile details",
-                                                    tint = if (!isDark && !isFrostedGlassEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                                                    tint = if (!isDark) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                                                     modifier = Modifier.size(18.dp)
                                                 )
                                             }
@@ -2836,6 +2965,20 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             onScrollLockChange = { locked -> subPageScrollEnabled = !locked },
                             onTriggerConfetti = { showConfettiAnimation = true },
                             isScrollInProgress = subPageScrollState.isScrollInProgress
+                        )
+                    } else if (subPage == "reminders") {
+                        renderRemindersSection(
+                            viewModel = viewModel,
+                            remindersEnabled = remindersEnabled,
+                            remindersDestination = remindersDestination,
+                            reminderInterval = reminderInterval,
+                            startHour = startHour,
+                            endHour = endHour,
+                            hasNotificationPermission = hasNotificationPermission,
+                            launcher = launcher,
+                            appLanguage = appLanguage,
+                            context = context,
+                            watchCompanionDetected = watchCompanionDetected
                         )
                     } else if (subPage == "adjust_corner_radius") {
                         renderCornerRadiusSettingsSection(
@@ -2991,6 +3134,8 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             vibrationPatternPreset = vibrationPatternPreset,
                             isHapticTestActive = isHapticTestActive,
                             onNavigateToAppearance = { settingsSubPage = "appearance" },
+                            onNavigateToReminders = { settingsSubPage = "reminders" },
+                            remindersInSettings = remindersInSettings,
                             onNavigateToHaptics = { settingsSubPage = "haptics" },
                             onNavigateToWearOsSettings = { settingsSubPage = "wear_os_settings" },
                             onNavigateToWidget = { settingsSubPage = "widget_settings" },
@@ -3058,6 +3203,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                         if (targetTab == 4) {
                             val pageTitle = when (settingsSubPage) {
                                 "appearance" -> if (appLanguage == "el") "Εμφάνιση" else "Appearance"
+                                "reminders" -> if (appLanguage == "el") "Υπενθυμίσεις" else "Reminders"
                                 "haptics" -> if (appLanguage == "el") "Απτική ανάδραση" else "Haptic Feedback"
                                 "widget_settings" -> if (appLanguage == "el") "Μικροεφαρμογή" else "Widget Settings"
                              "wear_os_settings" -> if (appLanguage == "el") "Ρυθμίσεις Wear OS" else "Wear OS Integration"
@@ -3386,7 +3532,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             currentDate = currentDate,
                             appLanguage = appLanguage,
                             swipeNavigationEnabled = viewModel.daySwipeNavigationEnabled.collectAsStateWithLifecycle().value,
-                            arrowsVisible = viewModel.daySwipeNavigationArrowsVisible.collectAsStateWithLifecycle().value,
+                            arrowsVisible = true,
                             isGlassMode = viewModel.appTheme.collectAsStateWithLifecycle().value == "GLASS",
                             navBarPadding = viewModel.dayNavBarPadding.collectAsStateWithLifecycle().value,
                             dayNavBarColorMode = viewModel.dayNavBarColorMode.collectAsStateWithLifecycle().value,
@@ -3651,32 +3797,17 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                     .then(
                                         if (isFrostedGlassEnabled) {
                                             Modifier
-                                                .blur(
-                                                    radius = 20.dp,
-                                                    edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(nextCardShape)
-                                                )
                                                 .background(
-                                                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                                        colors = listOf(
-                                                            Color.White.copy(alpha = if (isDark) (frostedGlassTransparency * 0.16f).coerceIn(0.04f, 0.30f) else (frostedGlassTransparency * 0.25f).coerceIn(0.08f, 0.45f)),
-                                                            Color.White.copy(alpha = if (isDark) (frostedGlassTransparency * 0.05f).coerceIn(0.01f, 0.15f) else (frostedGlassTransparency * 0.10f).coerceIn(0.02f, 0.20f))
-                                                        )
-                                                    ),
+                                                    brush = GlassTheme.getCardBackgroundBrush(isDark, frostedGlassTransparency),
                                                     shape = nextCardShape
                                                 )
                                                 .border(
                                                     width = 1.dp,
-                                                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                                        colors = listOf(
-                                                            Color.White.copy(alpha = if (isDark) 0.45f else 0.65f),
-                                                            Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-                                                            Color.Transparent
-                                                        ),
-                                                        start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                                        end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                                                    ),
+                                                    brush = GlassTheme.getCardBorderBrush(isDark),
                                                     shape = nextCardShape
                                                 )
+                                        } else if (transparentComponentsEnabled) {
+                                            Modifier
                                         } else if (!isDark) {
                                             Modifier.border(
                                                 width = 1.dp,
@@ -3685,7 +3816,15 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                             )
                                         } else Modifier
                                     )
-                                    .clickable { currentTab = 3 }, // Navigate directly to reminder settings!
+                                    .clickable {
+                                        if (remindersInSettings) {
+                                            currentTab = 4
+                                            settingsSubPage = "reminders"
+                                        } else {
+                                            currentTab = 3
+                                        }
+                                        viewModel.triggerButtonHaptic()
+                                    },
                                 colors = CardDefaults.cardColors(
                                     containerColor = if (isFrostedGlassEnabled) {
                                         Color.Transparent
@@ -3776,32 +3915,17 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                     .then(
                                         if (isFrostedGlassEnabled) {
                                             Modifier
-                                                .blur(
-                                                    radius = 20.dp,
-                                                    edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(lastCardShape)
-                                                )
                                                 .background(
-                                                    brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                                        colors = listOf(
-                                                            Color.White.copy(alpha = if (isDark) (frostedGlassTransparency * 0.16f).coerceIn(0.04f, 0.30f) else (frostedGlassTransparency * 0.25f).coerceIn(0.08f, 0.45f)),
-                                                            Color.White.copy(alpha = if (isDark) (frostedGlassTransparency * 0.05f).coerceIn(0.01f, 0.15f) else (frostedGlassTransparency * 0.10f).coerceIn(0.02f, 0.20f))
-                                                        )
-                                                    ),
+                                                    brush = GlassTheme.getCardBackgroundBrush(isDark, frostedGlassTransparency),
                                                     shape = lastCardShape
                                                 )
                                                 .border(
                                                     width = 1.dp,
-                                                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                                        colors = listOf(
-                                                            Color.White.copy(alpha = if (isDark) 0.45f else 0.65f),
-                                                            Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-                                                            Color.Transparent
-                                                        ),
-                                                        start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                                        end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                                                    ),
+                                                    brush = GlassTheme.getCardBorderBrush(isDark),
                                                     shape = lastCardShape
                                                 )
+                                        } else if (transparentComponentsEnabled) {
+                                            Modifier
                                         } else if (!isDark) {
                                             Modifier.border(
                                                 width = 1.dp,
@@ -3936,32 +4060,17 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                     if (isFrostedGlassEnabled) {
                                         val insightShape = RoundedCornerShape(maxOf(20, LocalGeneralCornerRadius.current).dp)
                                         Modifier
-                                            .blur(
-                                                radius = 20.dp,
-                                                edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(insightShape)
-                                            )
                                             .background(
-                                                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                                    colors = listOf(
-                                                        Color.White.copy(alpha = if (isDark) (frostedGlassTransparency * 0.16f).coerceIn(0.04f, 0.30f) else (frostedGlassTransparency * 0.25f).coerceIn(0.08f, 0.45f)),
-                                                        Color.White.copy(alpha = if (isDark) (frostedGlassTransparency * 0.05f).coerceIn(0.01f, 0.15f) else (frostedGlassTransparency * 0.10f).coerceIn(0.02f, 0.20f))
-                                                    )
-                                                ),
+                                                brush = GlassTheme.getCardBackgroundBrush(isDark, frostedGlassTransparency),
                                                 shape = insightShape
                                             )
                                             .border(
                                                 width = 1.dp,
-                                                brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                                    colors = listOf(
-                                                        Color.White.copy(alpha = if (isDark) 0.45f else 0.65f),
-                                                        Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-                                                        Color.Transparent
-                                                    ),
-                                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                                    end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                                                ),
+                                                brush = GlassTheme.getCardBorderBrush(isDark),
                                                 shape = insightShape
                                             )
+                                    } else if (transparentComponentsEnabled) {
+                                        Modifier
                                     } else if (!isDark) {
                                         Modifier.border(
                                             width = 1.dp,
@@ -4009,11 +4118,11 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                     }
                                     if (isGenerating) {
                                         CircularSquigglyProgressIndicator(
-                                            modifier = Modifier.size(22.dp),
+                                            modifier = Modifier.size(26.dp),
                                             color = if (isDark) Color(0xFF91B1F9) else MaterialTheme.colorScheme.primary,
-                                            strokeWidth = 2.dp,
+                                            strokeWidth = 3.dp,
                                             numLobes = 10,
-                                            squigglyAmplitude = 0.12f
+                                            squigglyAmplitude = 0.20f
                                         )
                                     }
                                 }
@@ -4122,11 +4231,11 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                         verticalArrangement = Arrangement.Center
                                     ) {
                                         CircularSquigglyProgressIndicator(
-                                            modifier = Modifier.size(52.dp),
+                                            modifier = Modifier.size(56.dp),
                                             color = if (isDark) Color(0xFF91B1F9) else MaterialTheme.colorScheme.primary,
-                                            strokeWidth = 3.5.dp,
+                                            strokeWidth = 4.5.dp,
                                             numLobes = 6,
-                                            squigglyAmplitude = 0.15f
+                                            squigglyAmplitude = 0.24f
                                         )
                                         Spacer(modifier = Modifier.height(14.dp))
                                         Text(
@@ -4380,6 +4489,20 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             onTriggerConfetti = { showConfettiAnimation = true },
                             isScrollInProgress = settingsScrollState.isScrollInProgress
                         )
+                    } else if (settingsSubPage == "reminders") {
+                        renderRemindersSection(
+                            viewModel = viewModel,
+                            remindersEnabled = remindersEnabled,
+                            remindersDestination = remindersDestination,
+                            reminderInterval = reminderInterval,
+                            startHour = startHour,
+                            endHour = endHour,
+                            hasNotificationPermission = hasNotificationPermission,
+                            launcher = launcher,
+                            appLanguage = appLanguage,
+                            context = context,
+                            watchCompanionDetected = watchCompanionDetected
+                        )
                     } else if (settingsSubPage == "adjust_corner_radius") {
                         renderCornerRadiusSettingsSection(
                             viewModel = viewModel,
@@ -4545,6 +4668,8 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             vibrationPatternPreset = vibrationPatternPreset,
                             isHapticTestActive = isHapticTestActive,
                             onNavigateToAppearance = { settingsSubPage = "appearance" },
+                            onNavigateToReminders = { settingsSubPage = "reminders" },
+                            remindersInSettings = remindersInSettings,
                             onNavigateToHaptics = { settingsSubPage = "haptics" },
                             onNavigateToWearOsSettings = { settingsSubPage = "wear_os_settings" },
                             onNavigateToWidget = { settingsSubPage = "widget_settings" },
@@ -7457,9 +7582,9 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                 val dynamicVersionName = remember(context) {
                                     try {
                                         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                                        packageInfo.versionName ?: "1.4"
+                                        packageInfo.versionName ?: "1.4.1"
                                     } catch (e: Exception) {
-                                        "1.4"
+                                        "1.4.1"
                                     }
                                 }
                                 Text(
@@ -9504,7 +9629,7 @@ fun WaterGlassProgress(
         hsv[2] = hsv[2].coerceAtLeast(0.85f)
         Color(android.graphics.Color.HSVToColor(hsv))
     }
-    val topTextColorArgb = (if (isDark) Color.White.copy(alpha = 0.65f) else Color.Black.copy(alpha = 0.55f)).toArgb()
+    val topTextColorArgb = (if (isDark) Color.White else Color(0xFF13151A)).toArgb()
     val bottomTextColorArgb = com.pixelwater.app.ui.theme.ensureTextContrast(resolvedColor, isDark).toArgb()
     val circleOutlineColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
 
@@ -9526,6 +9651,7 @@ fun WaterGlassProgress(
 
     val cardBorder = when {
         isProgressCircleCardBgRemoved -> null
+        isFrostedGlassEnabled -> null
         isDark -> null
         else -> androidx.compose.foundation.BorderStroke(
             1.dp, 
@@ -9567,12 +9693,13 @@ fun WaterGlassProgress(
                 modifier = Modifier
                     .matchParentSize()
                     .background(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency),
-                                MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency * 0.45f)
-                            )
-                        )
+                        brush = GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency),
+                        shape = RoundedCornerShape(32.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        brush = GlassTheme.getCardBorderBrush(isDark),
+                        shape = RoundedCornerShape(32.dp)
                     )
             )
         }
@@ -9985,58 +10112,99 @@ fun WaterGlassProgress(
             if (percentage >= 1f) {
                 Spacer(modifier = Modifier.height(20.dp))
                 val cardShape = RoundedCornerShape(20.dp)
-                val glassBorderColor = if (isDark) Color(0x33FFFFFF) else Color(0x4000BFA5)
-                val glassContainerColor = if (isDark) Color(0x2B2C3131) else Color(0x35FFFFFF)
+                val isFrostedGlass = LocalFrostedGlassEnabled.current
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(cardShape)
-                ) {
-                    // Heavy blur backdrop layer
+                if (isFrostedGlass) {
+                    val glassBorderColor = if (isDark) Color(0x33FFFFFF) else Color(0x4000BFA5)
+                    val glassContainerColor = if (isDark) Color(0x2B2C3131) else Color(0x35FFFFFF)
+
                     Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .blur(radius = 64.dp, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(cardShape))
-                            .background(glassContainerColor, cardShape)
-                    )
-                    // Translucent frosted glass tint + crisp border
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        if (isDark) Color(0x25FFFFFF) else Color(0x45FFFFFF),
-                                        if (isDark) Color(0x1000BFA5) else Color(0x1A00BFA5)
-                                    )
-                                ),
-                                shape = cardShape
-                            )
-                            .border(1.2.dp, glassBorderColor, cardShape)
-                    )
-                    Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            .clip(cardShape)
                     ) {
-                        Text(text = "🎉", fontSize = 28.sp)
-                        Column {
-                            Text(
-                                text = if (appLanguage == "el") "Ο Καθημερινός Στόχος Επιτεύχθηκε!" else "Daily Goal Achieved!",
-                                fontWeight = FontWeight.Bold,
-                                color = if (isDark) Color.White else MaterialTheme.colorScheme.onTertiaryContainer,
-                                style = MaterialTheme.typography.titleMedium
-                            )
-                            Text(
-                                text = if (appLanguage == "el") 
-                                    "Εξαιρετική δουλειά! Φτάσατε το 100% του καθημερινού σας στόχου νερού." 
-                                    else "Awesome job! You reached 100% of your daily water intake goal.",
-                                color = if (isDark) Color.LightGray.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                        // Heavy blur backdrop layer
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .blur(radius = 64.dp, edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(cardShape))
+                                .background(glassContainerColor, cardShape)
+                        )
+                        // Translucent frosted glass tint + crisp border
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .background(
+                                    brush = Brush.verticalGradient(
+                                        colors = listOf(
+                                            if (isDark) Color(0x25FFFFFF) else Color(0x45FFFFFF),
+                                            if (isDark) Color(0x1000BFA5) else Color(0x1A00BFA5)
+                                        )
+                                    ),
+                                    shape = cardShape
+                                )
+                                .border(1.2.dp, glassBorderColor, cardShape)
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(text = "🎉", fontSize = 28.sp)
+                            Column {
+                                Text(
+                                    text = if (appLanguage == "el") "Ο Καθημερινός Στόχος Επιτεύχθηκε!" else "Daily Goal Achieved!",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = if (appLanguage == "el") 
+                                        "Εξαιρετική δουλειά! Φτάσατε το 100% του καθημερινού σας στόχου νερού." 
+                                        else "Awesome job! You reached 100% of your daily water intake goal.",
+                                    color = if (isDark) Color.LightGray.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Fully opaque card when glass theme is off
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = cardShape,
+                        color = if (isDark) Color(0xFF1E2826) else MaterialTheme.colorScheme.tertiaryContainer,
+                        tonalElevation = 2.dp,
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            if (isDark) Color(0xFF00BFA5).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
+                        )
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Text(text = "🎉", fontSize = 28.sp)
+                            Column {
+                                Text(
+                                    text = if (appLanguage == "el") "Ο Καθημερινός Στόχος Επιτεύχθηκε!" else "Daily Goal Achieved!",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                                Text(
+                                    text = if (appLanguage == "el") 
+                                        "Εξαιρετική δουλειά! Φτάσατε το 100% του καθημερινού σας στόχου νερού." 
+                                        else "Awesome job! You reached 100% of your daily water intake goal.",
+                                    color = if (isDark) Color(0xFFB0BEC5) else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
                         }
                     }
                 }
@@ -10722,7 +10890,7 @@ fun LogTimePickerDialog(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(
-                    if (isBlurEffect) Modifier.shadow(
+                    if (isBlurEffect && !isFrostedGlassEnabled) Modifier.shadow(
                         elevation = 16.dp,
                         shape = RoundedCornerShape(cornerRadius),
                         ambientColor = Color.Black.copy(alpha = 0.2f),
@@ -10736,7 +10904,7 @@ fun LogTimePickerDialog(
                 modifier = Modifier
                     .matchParentSize()
                     .then(
-                        if (isFrostedGlassEnabled || isBlurEffect) Modifier.blur(
+                        if (isBlurEffect && !isFrostedGlassEnabled) Modifier.blur(
                             radius = 24.dp,
                             edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(RoundedCornerShape(cornerRadius))
                         ) else Modifier
@@ -10748,13 +10916,7 @@ fun LogTimePickerDialog(
                     .then(
                         if (isFrostedGlassEnabled) Modifier.border(
                             width = 1.dp,
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = 0.45f),
-                                    Color.White.copy(alpha = 0.12f),
-                                    Color.Transparent
-                                )
-                            ),
+                            brush = GlassTheme.getCardBorderBrush(isDark),
                             shape = RoundedCornerShape(cornerRadius)
                         ) else Modifier
                     )
@@ -10765,12 +10927,7 @@ fun LogTimePickerDialog(
                     modifier = Modifier
                         .matchParentSize()
                         .background(
-                            brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = (frostedTransparency * 0.16f).coerceIn(0.04f, 0.30f)),
-                                    Color.White.copy(alpha = (frostedTransparency * 0.05f).coerceIn(0.01f, 0.15f))
-                                )
-                            ),
+                            brush = GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency),
                             shape = RoundedCornerShape(cornerRadius)
                         )
                 )
@@ -10830,7 +10987,7 @@ fun LogTimePickerDialog(
                     Button(
                         onClick = { onConfirm(state.hour, state.minute) },
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = if (isFrostedGlassEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.85f) else MaterialTheme.colorScheme.primary
+                            containerColor = MaterialTheme.colorScheme.primary
                         )
                     ) {
                         Text(
@@ -10882,7 +11039,7 @@ fun WaterLogItem(
             modifier = Modifier
                 .weight(1f)
                 .then(
-                    if (isBlur && isFrostedGlassEnabled) Modifier.shadow(
+                    if (isBlur && !isFrostedGlassEnabled) Modifier.shadow(
                         elevation = 8.dp,
                         shape = RoundedCornerShape(20.dp),
                         ambientColor = Color.Black.copy(alpha = 0.15f),
@@ -10904,35 +11061,18 @@ fun WaterLogItem(
                 .testTag("water_log_item")
         ) {
             if (isFrostedGlassEnabled) {
-                // Blurred background layer sibling
+                // Background layer sibling
                 val logShape = RoundedCornerShape(20.dp)
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .blur(
-                            radius = 20.dp,
-                            edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(logShape)
-                        )
                         .background(
-                            brush = Brush.verticalGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = if (isDark) (frostedTransparency * 0.16f).coerceIn(0.04f, 0.30f) else (frostedTransparency * 0.25f).coerceIn(0.08f, 0.45f)),
-                                    Color.White.copy(alpha = if (isDark) (frostedTransparency * 0.05f).coerceIn(0.01f, 0.15f) else (frostedTransparency * 0.10f).coerceIn(0.02f, 0.20f))
-                                )
-                            ),
+                            brush = GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency),
                             shape = logShape
                         )
                         .border(
                             width = 1.dp,
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = if (isDark) 0.45f else 0.65f),
-                                    Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-                                    Color.Transparent
-                                ),
-                                start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                            ),
+                            brush = GlassTheme.getCardBorderBrush(isDark),
                             shape = logShape
                         )
                         .clip(logShape)
@@ -11041,7 +11181,7 @@ fun WaterLogItem(
             modifier = Modifier
                 .size(52.dp)
                 .then(
-                    if (isBlur && isFrostedGlassEnabled) Modifier.shadow(
+                    if (isBlur && !isFrostedGlassEnabled) Modifier.shadow(
                         elevation = 6.dp,
                         shape = RoundedCornerShape(18.dp),
                         ambientColor = Color.Black.copy(alpha = 0.15f),
@@ -11104,11 +11244,7 @@ fun PixelQuickAddButton(
             if (isDark) Color(0xFFE2E2E2) else MaterialTheme.colorScheme.primary
         } else {
             if (isFrostedGlassEnabled) {
-                if (isDark) {
-                    MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency * 0.45f)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency * 0.35f)
-                }
+                GlassTheme.getSubCardColor(isDark, frostedTransparency)
             } else {
                 if (!isDark && vividLightBoxesEnabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
             }
@@ -11125,7 +11261,7 @@ fun PixelQuickAddButton(
             if (isDark) Color(0xFF191C1C) else MaterialTheme.colorScheme.onPrimary
         } else {
             if (isFrostedGlassEnabled) {
-                if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+                if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
             } else {
                 MaterialTheme.colorScheme.onSecondaryContainer
             }
@@ -11173,56 +11309,19 @@ fun PixelQuickAddButton(
             .testTag(tag),
         contentAlignment = Alignment.Center
     ) {
-        if (isFrostedGlassEnabled) {
-            val frostOpacityFactor by animateFloatAsState(
-                targetValue = if (isActive) 0f else 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
-                ),
-                label = "frost_opacity"
-            )
-            
-            if (frostOpacityFactor > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = frostOpacityFactor }
-                        .blur(
-                            radius = 12.dp,
-                            edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(shape)
-                        )
-                        .background(
-                            color = if (isDark) Color.Black.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.12f),
-                            shape = shape
-                        )
-                )
-            }
-            
-            if (frostOpacityFactor > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = frostOpacityFactor }
-                        .border(
-                            width = 1.dp,
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = if (isDark) 0.15f else 0.25f),
-                                    Color.Transparent,
-                                    Color.White.copy(alpha = if (isDark) 0.05f else 0.1f)
-                                )
-                            ),
-                            shape = shape
-                        )
-                )
-            }
-        }
-
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .background(color = containerColor, shape = shape)
+                .then(
+                    if (isFrostedGlassEnabled && !isActive) {
+                        Modifier.border(
+                            width = 1.dp,
+                            brush = GlassTheme.getCardBorderBrush(isDark),
+                            shape = shape
+                        )
+                    } else Modifier
+                )
         )
 
         Row(
@@ -11275,11 +11374,7 @@ fun PixelCustomPenButton(
             if (isDark) Color(0xFFE2E2E2) else MaterialTheme.colorScheme.primary
         } else {
             if (isFrostedGlassEnabled) {
-                if (isDark) {
-                    MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency * 0.45f)
-                } else {
-                    MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency * 0.35f)
-                }
+                GlassTheme.getSubCardColor(isDark, frostedTransparency)
             } else {
                 Color.Transparent
             }
@@ -11296,7 +11391,7 @@ fun PixelCustomPenButton(
             if (isDark) Color(0xFF191C1C) else MaterialTheme.colorScheme.onPrimary
         } else {
             if (isFrostedGlassEnabled) {
-                if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.primary
+                if (isDark) Color.White else MaterialTheme.colorScheme.primary
             } else {
                 if (isDark) Color.White else MaterialTheme.colorScheme.primary
             }
@@ -11344,68 +11439,25 @@ fun PixelCustomPenButton(
             .testTag(tag),
         contentAlignment = Alignment.Center
     ) {
-        if (isFrostedGlassEnabled) {
-            val frostOpacityFactor by animateFloatAsState(
-                targetValue = if (isActive) 0f else 1f,
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessLow
-                ),
-                label = "pen_frost_opacity"
-            )
-            
-            if (frostOpacityFactor > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = frostOpacityFactor }
-                        .blur(
-                            radius = 12.dp,
-                            edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(CircleShape)
-                        )
-                        .background(
-                            color = if (isDark) Color.Black.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.12f),
-                            shape = CircleShape
-                        )
-                )
-            }
-            
-            if (frostOpacityFactor > 0.01f) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer { alpha = frostOpacityFactor }
-                        .border(
-                            width = 1.dp,
-                            brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                colors = listOf(
-                                    Color.White.copy(alpha = if (isDark) 0.15f else 0.25f),
-                                    Color.Transparent,
-                                    Color.White.copy(alpha = if (isDark) 0.05f else 0.1f)
-                                )
-                            ),
-                            shape = CircleShape
-                        )
-                )
-            }
-        } else {
-            if (!isActive) {
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .border(
-                            width = 1.dp,
-                            color = if (isDark) Color(0xFF2C3131) else MaterialTheme.colorScheme.outline,
-                            shape = CircleShape
-                        )
-                )
-            }
-        }
-
         Box(
             modifier = Modifier
                 .matchParentSize()
                 .background(color = containerColor, shape = CircleShape)
+                .then(
+                    if (isFrostedGlassEnabled && !isActive) {
+                        Modifier.border(
+                            width = 1.dp,
+                            brush = GlassTheme.getCardBorderBrush(isDark),
+                            shape = CircleShape
+                        )
+                    } else if (!isActive) {
+                        Modifier.border(
+                            width = 1.dp,
+                            color = if (isDark) Color(0xFF2C3131) else MaterialTheme.colorScheme.outline,
+                            shape = CircleShape
+                        )
+                    } else Modifier
+                )
         )
 
         Icon(
@@ -11440,16 +11492,15 @@ fun PixelBeveragePresetButton(
     )
     
     val isFrostedGlassEnabled = LocalFrostedGlassEnabled.current
+    val frostedTransparency = LocalFrostedGlassTransparency.current
     val containerColor by animateColorAsState(
         targetValue = if (isSelected) {
             if (isDark) Color(0xFFE2E2E2) else MaterialTheme.colorScheme.primary
         } else {
-            if (isDark) Color(0xFF2E3030) else {
-                if (isFrostedGlassEnabled) {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                }
+            if (isFrostedGlassEnabled) {
+                GlassTheme.getSubCardColor(isDark, frostedTransparency)
+            } else {
+                if (isDark) Color(0xFF2E3030) else MaterialTheme.colorScheme.surfaceVariant
             }
         },
         animationSpec = tween(250),
@@ -11460,7 +11511,11 @@ fun PixelBeveragePresetButton(
         targetValue = if (isSelected) {
             if (isDark) Color(0xFF191C1C) else MaterialTheme.colorScheme.onPrimary
         } else {
-            if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+            if (isFrostedGlassEnabled) {
+                if (isDark) Color.White else MaterialTheme.colorScheme.onSurface
+            } else {
+                if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+            }
         },
         animationSpec = tween(250),
         label = "beverage_content_color"
@@ -11472,6 +11527,15 @@ fun PixelBeveragePresetButton(
             .height(52.dp)
             .clip(RoundedCornerShape(maxOf(0f, cornerRadius.value).dp))
             .background(color = containerColor)
+            .then(
+                if (isFrostedGlassEnabled && !isSelected) {
+                    Modifier.border(
+                        width = 1.dp,
+                        brush = GlassTheme.getCardBorderBrush(isDark),
+                        shape = RoundedCornerShape(maxOf(0f, cornerRadius.value).dp)
+                    )
+                } else Modifier
+            )
             .clickable {
                 onClick()
                 // Bouncing tactile feedback
@@ -13326,8 +13390,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderStatsAndHistorySection(
                         
                         if (points.size > 1) {
                             if (goalLineSquiggly) {
-                                val amplitude = 3.dp.toPx()
-                                val period = 14.dp.toPx()
+                                val amplitude = 5.5.dp.toPx()
+                                val period = 18.dp.toPx()
                                 path.moveTo(points[0].x, points[0].y + amplitude * kotlin.math.sin(2 * Math.PI * points[0].x / period).toFloat())
                                 for (i in 0 until points.size - 1) {
                                     val p1 = points[i]
@@ -13364,7 +13428,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderStatsAndHistorySection(
                                 path = path,
                                 color = graphGoalLineColor.copy(alpha = 0.75f),
                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                    width = 2.5.dp.toPx(),
+                                    width = if (goalLineSquiggly) 3.8.dp.toPx() else 2.5.dp.toPx(),
                                     cap = androidx.compose.ui.graphics.StrokeCap.Round,
                                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                                 )
@@ -15569,7 +15633,7 @@ val LocalExperimentalHueShiftDuration = staticCompositionLocalOf { 5f }
 val LocalBaseCardColor = staticCompositionLocalOf<Color?> { null }
 val LocalAppTheme = staticCompositionLocalOf { "DYNAMIC" }
 val LocalSettingsDividerStyle = staticCompositionLocalOf { "STRAIGHT" }
-val LocalSettingsDividerContrast = staticCompositionLocalOf { "MEDIUM" }
+val LocalSettingsDividerContrast = staticCompositionLocalOf { "HIGH" }
 val LocalSettingsGapScale = staticCompositionLocalOf { 1.0f }
 val LocalSettingsAdaptiveGrouping = staticCompositionLocalOf { true }
 val LocalSettingsAdaptiveCornerRadius = staticCompositionLocalOf { 0 }
@@ -15596,6 +15660,58 @@ fun Modifier.appBorder(
         this.border(w, color, shape)
     } else {
         this
+    }
+}
+
+object GlassTheme {
+    @Composable
+    fun getCardBackgroundBrush(
+        isDark: Boolean,
+        transparency: Float = LocalFrostedGlassTransparency.current,
+        surfaceColor: Color = MaterialTheme.colorScheme.surface,
+        surfaceVariantColor: Color = MaterialTheme.colorScheme.surfaceVariant
+    ): Brush {
+        val targetAlpha = (0.35f * transparency).coerceIn(0.08f, 0.60f)
+        val tintColor = if (isDark) {
+            (if (surfaceColor == Color.Black) Color(0xFF1E2022) else surfaceColor).copy(alpha = targetAlpha)
+        } else {
+            surfaceColor.copy(alpha = targetAlpha)
+        }
+        return androidx.compose.ui.graphics.SolidColor(tintColor)
+    }
+
+    @Composable
+    fun getCardBorderBrush(
+        isDark: Boolean,
+        primaryColor: Color = MaterialTheme.colorScheme.primary,
+        outlineVariantColor: Color = MaterialTheme.colorScheme.outlineVariant,
+        outlineColor: Color = MaterialTheme.colorScheme.outline
+    ): Brush {
+        val strokeColor = if (isDark) {
+            Color.White.copy(alpha = 0.08f)
+        } else {
+            outlineVariantColor.copy(alpha = 0.15f)
+        }
+        return androidx.compose.ui.graphics.SolidColor(strokeColor)
+    }
+
+    @Composable
+    fun getInnerSheenBrush(isDark: Boolean): Brush {
+        return androidx.compose.ui.graphics.SolidColor(Color.Transparent)
+    }
+
+    @Composable
+    fun getSubCardColor(
+        isDark: Boolean,
+        transparency: Float = LocalFrostedGlassTransparency.current
+    ): Color {
+        val targetAlpha = (0.28f * transparency).coerceIn(0.08f, 0.50f)
+        return MaterialTheme.colorScheme.surfaceVariant.copy(alpha = targetAlpha)
+    }
+
+    @Composable
+    fun getSubCardBorderColor(isDark: Boolean): Color {
+        return if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.15f)
     }
 }
 
@@ -15642,8 +15758,13 @@ fun ChunkyGapsLayout(
 
     val cardAreas = remember { androidx.compose.runtime.mutableStateListOf<Pair<Float, Float>>() }
 
+    val isTransparentGaps = LocalTransparentComponentsEnabled.current
+    val transLimitGaps = LocalComponentsTransparency.current
+
     val cardBgColor = if (isFrostedGlassEnabled) {
         Color.Transparent
+    } else if (isTransparentGaps) {
+        (containerColor ?: baseCardColor).copy(alpha = transLimitGaps)
     } else {
         containerColor ?: baseCardColor
     }
@@ -15651,6 +15772,10 @@ fun ChunkyGapsLayout(
     val gapScale = LocalSettingsGapScale.current
     val isAdaptive = LocalSettingsAdaptiveGrouping.current
     val adaptiveGrpRadius = LocalSettingsAdaptiveCornerRadius.current
+
+    val glassBgBrush = GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency, surfaceColor, baseCardColor)
+    val glassBorderBrush = GlassTheme.getCardBorderBrush(isDark)
+    val glassSheenBrush = GlassTheme.getInnerSheenBrush(isDark)
 
     Layout(
         content = content,
@@ -15686,7 +15811,7 @@ fun ChunkyGapsLayout(
                         addRoundRect(roundRect)
                     }
 
-                    if (isBlurEffect) {
+                    if (isBlurEffect && !isFrostedGlassEnabled && !isTransparentGaps) {
                         val shadowRoundRect = androidx.compose.ui.geometry.RoundRect(
                             left = 0f,
                             top = top + 3f,
@@ -15700,23 +15825,13 @@ fun ChunkyGapsLayout(
                         val shadowPath = Path().apply {
                             addRoundRect(shadowRoundRect)
                         }
-                        drawPath(path = shadowPath, color = Color.Black.copy(alpha = 0.08f))
-                    }
-
-                    if (cardBgColor != Color.Transparent) {
-                        drawPath(path = path, color = cardBgColor)
+                        drawPath(path = shadowPath, color = Color.Black.copy(alpha = if (isDark) 0.20f else 0.08f))
                     }
 
                     if (isFrostedGlassEnabled) {
-                        val brush = Brush.verticalGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = if (isDark) (frostedTransparency * 0.16f).coerceIn(0.04f, 0.30f) else (frostedTransparency * 0.25f).coerceIn(0.08f, 0.45f)),
-                                Color.White.copy(alpha = if (isDark) (frostedTransparency * 0.05f).coerceIn(0.01f, 0.15f) else (frostedTransparency * 0.10f).coerceIn(0.02f, 0.20f))
-                            ),
-                            startY = top,
-                            endY = top + cardHeight
-                        )
-                        drawPath(path = path, brush = brush)
+                        drawPath(path = path, brush = glassBgBrush)
+                    } else if (cardBgColor != Color.Transparent) {
+                        drawPath(path = path, color = cardBgColor)
                     }
 
                     if (isRainbowBorder) {
@@ -15726,18 +15841,9 @@ fun ChunkyGapsLayout(
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = borderWidthPx)
                         )
                     } else if (isFrostedGlassEnabled) {
-                        val brush = Brush.linearGradient(
-                            colors = listOf(
-                                Color.White.copy(alpha = if (isDark) 0.45f else 0.65f),
-                                Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-                                Color.Transparent
-                            ),
-                            start = androidx.compose.ui.geometry.Offset(0f, top),
-                            end = androidx.compose.ui.geometry.Offset(size.width, top + cardHeight)
-                        )
                         drawPath(
                             path = path,
-                            brush = brush,
+                            brush = glassBorderBrush,
                             style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx())
                         )
                     }
@@ -15853,12 +15959,16 @@ fun ChunkySettingCard(
     )
     val rainbowBrush = androidx.compose.ui.graphics.Brush.sweepGradient(colors = rainbowColors)
 
+    val isTransparent = LocalTransparentComponentsEnabled.current
+    val transLimit = LocalComponentsTransparency.current
     val isGapsMode = LocalSettingsDividerStyle.current == "GAPS"
 
     val finalCardColor = if (isGapsMode) {
         Color.Transparent
     } else if (isFrostedGlassEnabled) {
         Color.Transparent
+    } else if (isTransparent) {
+        (containerColor ?: baseCardColor).copy(alpha = transLimit)
     } else {
         containerColor ?: baseCardColor
     }
@@ -15874,11 +15984,11 @@ fun ChunkySettingCard(
             )
             .padding(vertical = 4.dp)
             .then(
-                if (isBlurEffect && !isGapsMode) Modifier.shadow(
+                if (isBlurEffect && !isFrostedGlassEnabled && !isGapsMode && !isTransparent) Modifier.shadow(
                     elevation = 8.dp,
                     shape = RoundedCornerShape(maxOf(0, generalCornerRadius).dp),
-                    ambientColor = Color.Black.copy(alpha = 0.15f),
-                    spotColor = Color.Black.copy(alpha = 0.3f)
+                    ambientColor = Color.Black.copy(alpha = if (isDark) 0.25f else 0.08f),
+                    spotColor = Color.Black.copy(alpha = if (isDark) 0.35f else 0.12f)
                 ) else Modifier
             )
             .animateContentSize(
@@ -15900,12 +16010,7 @@ fun ChunkySettingCard(
                 modifier = Modifier
                     .matchParentSize()
                     .then(
-                        if (isFrostedGlassEnabledVal) {
-                            Modifier.blur(
-                                radius = 20.dp,
-                                edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(cardCornerShape)
-                            )
-                        } else if (isBlurEffect) {
+                        if (isBlurEffect && !isFrostedGlassEnabledVal && !isTransparent) {
                             Modifier.blur(
                                 radius = expBlurRadius,
                                 edgeTreatment = androidx.compose.ui.draw.BlurredEdgeTreatment(cardCornerShape)
@@ -15915,12 +16020,7 @@ fun ChunkySettingCard(
                     .then(
                         if (isFrostedGlassEnabledVal) {
                             Modifier.background(
-                                brush = Brush.verticalGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = if (isDark) (frostedTransparency * 0.16f).coerceIn(0.04f, 0.30f) else (frostedTransparency * 0.25f).coerceIn(0.08f, 0.45f)),
-                                        Color.White.copy(alpha = if (isDark) (frostedTransparency * 0.05f).coerceIn(0.01f, 0.15f) else (frostedTransparency * 0.10f).coerceIn(0.02f, 0.20f))
-                                    )
-                                ),
+                                brush = GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency, MaterialTheme.colorScheme.surface, baseCardColor),
                                 shape = cardCornerShape
                             )
                         } else {
@@ -15940,17 +16040,11 @@ fun ChunkySettingCard(
                         } else if (isFrostedGlassEnabledVal) {
                             Modifier.border(
                                 width = 1.dp,
-                                brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = if (isDark) 0.45f else 0.65f),
-                                        Color.White.copy(alpha = if (isDark) 0.10f else 0.20f),
-                                        Color.Transparent
-                                    ),
-                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                                ),
+                                brush = GlassTheme.getCardBorderBrush(isDark),
                                 shape = cardCornerShape
                             )
+                        } else if (isTransparent) {
+                            Modifier
                         } else if (!isDark) {
                             Modifier.border(
                                 width = 1.dp,
@@ -16230,6 +16324,8 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
     vibrationPatternPreset: VibrationPatternPreset,
     isHapticTestActive: Boolean,
     onNavigateToAppearance: () -> Unit,
+    onNavigateToReminders: () -> Unit = {},
+    remindersInSettings: Boolean = false,
     onNavigateToHaptics: () -> Unit,
     onNavigateToWearOsSettings: () -> Unit,
     onNavigateToWidget: () -> Unit,
@@ -16536,63 +16632,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
         }
     }
     
-    item {
-        ChunkySettingCard(
-            modifier = Modifier.clickable { 
-                onNavigateToAiIntegration() 
-                viewModel.triggerButtonHaptic()
-            }
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.SmartToy,
-                            contentDescription = "AI Integration icon",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = if (appLanguage == "el") "Ενσωμάτωση AI" else "AI Integration",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (appLanguage == "el") "Ρυθμίστε τον πάροχο AI, τα διαπιστευτήρια και τα μοντέλα." else "Configure AI provider, credentials, and models.",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = "Navigate to AI Integration",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    }
-
-    // 1. Appearance Section Card
+    // 1. Appearance Section Card (Placed above AI Integration)
     item {
         ChunkySettingCard(
             modifier = Modifier.clickable { 
@@ -16649,7 +16689,123 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
         }
     }
 
-    // 1a. Haptic Feedback Section Nav
+    // AI Integration Section Card
+    item {
+        ChunkySettingCard(
+            modifier = Modifier.clickable { 
+                onNavigateToAiIntegration() 
+                viewModel.triggerButtonHaptic()
+            }
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.SmartToy,
+                            contentDescription = "AI Integration icon",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (appLanguage == "el") "Ενσωμάτωση AI" else "AI Integration",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (appLanguage == "el") "Ρυθμίστε τον πάροχο AI, τα διαπιστευτήρια και τα μοντέλα." else "Configure AI provider, credentials, and models.",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = "Navigate to AI Integration",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+
+    // 1a. Hydration Reminders Section Nav (when remindersInSettings is enabled)
+    if (remindersInSettings) {
+        item {
+            ChunkySettingCard(
+                modifier = Modifier.clickable { 
+                    onNavigateToReminders()
+                    viewModel.triggerButtonHaptic()
+                }
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Notifications,
+                                contentDescription = "Navigate to Reminders",
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
+                        Column {
+                            Text(
+                                text = if (appLanguage == "el") "Υπενθυμίσεις Ενυδάτωσης" else "Hydration Reminders",
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = if (appLanguage == "el") "Ώρες έναρξης/λήξης, διαστήματα και μηνύματα AI Coach." else "Active hours, alert intervals, and AI Coach push reminders.",
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = "Navigate to Reminders",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+        }
+    }
+
+    // 1b. Haptic Feedback Section Nav
     item {
         ChunkySettingCard(
             modifier = Modifier.clickable { 
@@ -16870,63 +17026,6 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = "Navigate to Tile Settings",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-    }
-
-    // 1c. Notifications Section Nav
-    item {
-        ChunkySettingCard(
-            modifier = Modifier.clickable { 
-                onNavigateToNotifications()
-                viewModel.triggerButtonHaptic()
-            }
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    modifier = Modifier.weight(1f),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(40.dp)
-                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.NotificationsActive,
-                            contentDescription = "Notifications preferences",
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Column {
-                        Text(
-                            text = if (appLanguage == "el") "Ειδοποιήσεις" else "Notifications Settings",
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (appLanguage == "el") "Ήχος, δόνηση, παράκαμψη DND & εμφάνιση banner." else "Sound, vibration, DND bypass & banner pop options.",
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                    contentDescription = "Navigate to Notifications Settings",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp)
                 )
@@ -17629,39 +17728,11 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAiIntegrationSettingsSe
                         badge = "Recommended"
                     ),
                     PixelModelInfo(
-                        id = "gemini-2.0-flash",
-                        title = "Gemini 2.0 Flash",
-                        subtitle = "Next-generation mainstream flash model. High speed, quality multimodal tasks.",
-                        subtitleEl = "Επόμενης γενιάς flash μοντέλο. Υψηλή ταχύτητα & πολυτροπικές δυνατότητες.",
-                        badge = "New 2.0"
-                    ),
-                    PixelModelInfo(
-                        id = "gemini-2.0-pro-exp",
-                        title = "Gemini 2.0 Pro Exp",
-                        subtitle = "Experimental next-gen pro model for high-precision coding and reasoning.",
-                        subtitleEl = "Πειραματικό μοντέλο pro επόμενης γενιάς για λογική υψηλής ακρίβειας.",
-                        badge = "Pro 2.0 Exp"
-                    ),
-                    PixelModelInfo(
-                        id = "gemini-1.5-flash",
-                        title = "Gemini 1.5 Flash",
-                        subtitle = "Efficient production-grade model with 1M token context window.",
-                        subtitleEl = "Αποδοτικό μοντέλο παραγωγής με παράθυρο πλαισίου 1M tokens.",
-                        badge = "1.5 Flash"
-                    ),
-                    PixelModelInfo(
-                        id = "gemini-1.5-pro",
-                        title = "Gemini 1.5 Pro",
-                        subtitle = "High-quality analytical model with 2M token context window.",
-                        subtitleEl = "Μοντέλο υψηλής ποιότητας για αναλύσεις με 2M tokens context window.",
-                        badge = "1.5 Pro"
-                    ),
-                    PixelModelInfo(
                         id = "gemini-3.5-flash",
                         title = "Gemini 3.5 Flash",
                         subtitle = "Newest, smartest real-time model. Highly fluent & creative coaching.",
                         subtitleEl = "Το νεότερο, εξυπνότερο μοντέλο πραγματικού χρόνου. Εξαιρετικά ευχερής & δημιουργική καθοδήγηση.",
-                        badge = "Recommended"
+                        badge = "Flagship"
                     ),
                     PixelModelInfo(
                         id = "gemini-3.1-pro-preview",
@@ -17676,27 +17747,6 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAiIntegrationSettingsSe
                         subtitle = "Highly cost-efficient, lightning fast response speed model.",
                         subtitleEl = "Εξαιρετικά αποδοτικό μοντέλο με αστραπιαία ταχύτητα απόκρισης.",
                         badge = "Lite Fast"
-                    ),
-                    PixelModelInfo(
-                        id = "gemini-2.5-flash",
-                        title = "Gemini 2.5 Flash",
-                        subtitle = "Robust speed-optimized engine. Creative & robust theme decorator.",
-                        subtitleEl = "Μηχανή βελτιστοποιημένης ταχύτητας. Δημιουργικός διακοσμητής θεμάτων.",
-                        badge = "Next-Gen"
-                    ),
-                    PixelModelInfo(
-                        id = "gemini-2.5-flash-lite",
-                        title = "Gemini 2.5 Flash Lite",
-                        subtitle = "Cost-efficient, super-fast model designed for smart real-time utility.",
-                        subtitleEl = "Αποδοτικό και εξαιρετικά γρήγορο μοντέλο για έξυπνη χρήση σε πραγματικό χρόνο.",
-                        badge = "Next-Gen Lite"
-                    ),
-                    PixelModelInfo(
-                        id = "gemini-2.5-pro",
-                        title = "Gemini 2.5 Pro",
-                        subtitle = "High-end reasoning for expert calculations and precision analytics.",
-                        subtitleEl = "Λογική υψηλού επιπέδου για υπολογισμούς ειδικών και αναλύσεις ακριβείας.",
-                        badge = "Ultra Expert"
                     )
                 )
             }
@@ -19468,208 +19518,6 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAiIntegrationSettingsSe
         }
         Spacer(modifier = Modifier.height(24.dp))
     }
-
-    item {
-        val lateNightLoggingEnabled by viewModel.lateNightLoggingEnabled.collectAsStateWithLifecycle()
-        val lateNightRolloverHour by viewModel.lateNightRolloverHour.collectAsStateWithLifecycle()
-
-        Text(
-            if (viewModel.appLanguage.value == "el") "Μετάβαση Ημέρας" else "Day Roll Timing",
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 8.dp, bottom = 8.dp)
-        )
-        ChunkySettingCard {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Nightlight,
-                            contentDescription = null,
-                            tint = Color(0xFF673AB7)
-                        )
-                        Spacer(modifier = Modifier.width(16.dp))
-                        Column {
-                            Text(
-                                if (viewModel.appLanguage.value == "el") "Παράταση μετά τα Μεσάνυχτα" else "Late-Night Grace Period",
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                if (viewModel.appLanguage.value == "el") {
-                                    "Διατηρεί την προηγούμενη ημέρα ενεργή μετά τα μεσάνυχτα για σωστή καταγραφή."
-                                } else {
-                                    "Keep tracking on yesterday's date after midnight so late logs count properly."
-                                },
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                    ChunkySettingSwitch(
-                        checked = lateNightLoggingEnabled,
-                        onCheckedChange = { 
-                            viewModel.updateLateNightLoggingEnabled(it) 
-                            viewModel.triggerButtonHaptic()
-                        }
-                    )
-                }
-
-                if (lateNightLoggingEnabled) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                if (viewModel.appLanguage.value == "el") "Ώρα Μετάβασης" else "Rollover Hour",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp
-                            )
-                            Text(
-                                if (viewModel.appLanguage.value == "el") {
-                                    "Η νέα ημέρα θα ξεκινήσει στις $lateNightRolloverHour:00 π.μ."
-                                } else {
-                                    "Today's cycle will begin at $lateNightRolloverHour:00 AM"
-                                },
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            // Decrement button
-                            androidx.compose.material3.IconButton(
-                                onClick = {
-                                    if (lateNightRolloverHour > 1) {
-                                        viewModel.updateLateNightRolloverHour(lateNightRolloverHour - 1)
-                                        viewModel.triggerToggleHaptic()
-                                    }
-                                },
-                                enabled = lateNightRolloverHour > 1
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Remove,
-                                    contentDescription = "Decrease",
-                                    tint = if (lateNightRolloverHour > 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            }
-
-                            Text(
-                                text = "$lateNightRolloverHour:00",
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-
-                            // Increment button
-                            androidx.compose.material3.IconButton(
-                                onClick = {
-                                    if (lateNightRolloverHour < 8) {
-                                        viewModel.updateLateNightRolloverHour(lateNightRolloverHour + 1)
-                                        viewModel.triggerToggleHaptic()
-                                    }
-                                },
-                                enabled = lateNightRolloverHour < 8
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Add,
-                                    contentDescription = "Increase",
-                                    tint = if (lateNightRolloverHour < 8) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        Spacer(modifier = Modifier.height(24.dp))
-    }
-
-    item {
-        val configProfile by viewModel.configProfile.collectAsStateWithLifecycle()
-        val isNerdMode = configProfile == "NERD_MODE"
-        if (isNerdMode) {
-            Text(if (viewModel.appLanguage.value == "el") "Συμπεριφορά Προτροπής" else "Prompt Behavior", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp))
-            ChunkySettingCard {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Rounded.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Column {
-                        Text(if (viewModel.appLanguage.value == "el") "Προτροπή Συστήματος" else "System Prompt", fontWeight = FontWeight.Bold)
-                        Text(if (viewModel.appLanguage.value == "el") "Προσαρμόστε τη συμπεριφορά του AI." else "Customize how the AI behaves.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                Text(if (viewModel.appLanguage.value == "el") "Προεπιλεγμένες Προτροπές" else "Preset Prompts", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
-                
-                var promptInput by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(systemPrompt) }
-                androidx.compose.runtime.LaunchedEffect(systemPrompt) { promptInput = systemPrompt }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    val presets = listOf(
-                        (if (viewModel.appLanguage.value == "el") "Ισορροπημένο" else "Balanced") to "You are a helpful AI assistant integrated into a hydration tracking app. You help users reach their daily goals with concise, encouraging, and science-backed advice on staying hydrated.",
-                        (if (viewModel.appLanguage.value == "el") "Δημιουργικό" else "Creative") to "You are a zany, extremely enthusiastic water-loving AI. You hype the user up to drink water and act like water is the elixir of the gods. Be fun and energetic.",
-                        (if (viewModel.appLanguage.value == "el") "Ακριβές" else "Precise") to "You are a clinical, concise hydration coach. Provide short, fact-based answers about water intake without pleasantries. Focus on precise metrics and science."
-                    )
-                    
-                    presets.forEach { (name, prompt) ->
-                        androidx.compose.material3.FilterChip(
-                            selected = false,
-                            onClick = { 
-                                promptInput = prompt 
-                                viewModel.updateSystemPrompt(prompt)
-                            },
-                            label = { Text(name) }
-                        )
-                    }
-                    
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-                
-                OutlinedTextField(
-                    value = promptInput,
-                    onValueChange = { promptInput = it },
-                    modifier = Modifier.fillMaxWidth().height(160.dp),
-                    shape = RoundedCornerShape(12.dp),
-                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outline
-                    )
-                )
-                
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Button(
-                        onClick = { viewModel.updateSystemPrompt(promptInput) },
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(if (viewModel.appLanguage.value == "el") "Αποθήκευση" else "Save")
-                    }
-                    OutlinedButton(
-                        onClick = { 
-                            val default = "You are a helpful AI assistant integrated into a hydration tracking app. You help users reach their daily goals with concise, encouraging, and science-backed advice on staying hydrated."
-                            promptInput = default
-                            viewModel.updateSystemPrompt(default)
-                        },
-                        shape = RoundedCornerShape(50)
-                    ) {
-                        Text(if (viewModel.appLanguage.value == "el") "Επαναφορά" else "Reset")
-                    }
-                }
-            }
-        }
-        }
-    }
 }
 
 @Composable
@@ -21109,7 +20957,7 @@ fun MaterialShapesBackground(
     // Relaxed dynamic-only check so STATIC and other custom seed themes can also draw shapes
     if (LocalAppTheme.current == "NONE") return
 
-    val safeSpeed = speed.coerceIn(0.05f, 5.0f)
+    val safeSpeed = (speed * 0.6f).coerceIn(0.01f, 0.6f)
     
     var offsetA by remember { mutableStateOf(0f) }
     var offsetB by remember { mutableStateOf(45f) }
@@ -21405,7 +21253,7 @@ fun AuraGlowBackground(
     viewModel: WaterViewModel? = null,
     modifier: Modifier = Modifier
 ) {
-    val safeSpeed = speed.coerceIn(0.05f, 5.0f)
+    val safeSpeed = (speed * 0.6f).coerceIn(0.01f, 0.6f)
     
     // Slight moving/hovering animation over time
     var phaseA by remember { mutableStateOf(0f) }
@@ -22272,15 +22120,16 @@ fun InteractiveSpinCanvasCard(
             var localOffsetD by remember { mutableStateOf(120f) }
 
             LaunchedEffect(rotMultA, rotMultB, rotMultC, rotMultD, currentSpeed) {
+                val effectiveSpeed = (currentSpeed * 0.6f).coerceIn(0.01f, 0.6f)
                 var lastTime = withFrameNanos { it }
                 while (true) {
                     val now = withFrameNanos { it }
                     val deltaSec = (now - lastTime) / 1_000_000_000f
                     if (deltaSec > 0f) {
-                        localOffsetA = ((localOffsetA + 9.0f * currentSpeed * rotMultA * deltaSec) % 360f + 360f) % 360f
-                        localOffsetB = ((localOffsetB + 9.0f * currentSpeed * rotMultB * deltaSec) % 360f + 360f) % 360f
-                        localOffsetC = ((localOffsetC + 9.0f * currentSpeed * rotMultC * deltaSec) % 360f + 360f) % 360f
-                        localOffsetD = ((localOffsetD + 9.0f * currentSpeed * rotMultD * deltaSec) % 360f + 360f) % 360f
+                        localOffsetA = ((localOffsetA + 9.0f * effectiveSpeed * rotMultA * deltaSec) % 360f + 360f) % 360f
+                        localOffsetB = ((localOffsetB + 9.0f * effectiveSpeed * rotMultB * deltaSec) % 360f + 360f) % 360f
+                        localOffsetC = ((localOffsetC + 9.0f * effectiveSpeed * rotMultC * deltaSec) % 360f + 360f) % 360f
+                        localOffsetD = ((localOffsetD + 9.0f * effectiveSpeed * rotMultD * deltaSec) % 360f + 360f) % 360f
                     }
                     lastTime = now
                 }
@@ -23817,6 +23666,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderLegalDisclaimerSection(
     item {
         val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
         val isFrostedGlassEnabled = LocalFrostedGlassEnabled.current
+        val frostedTransparency = LocalFrostedGlassTransparency.current
         val textColor = if (isDark) androidx.compose.ui.graphics.Color.White else androidx.compose.ui.graphics.Color(0xFF13151A)
 
         Column(
@@ -23857,20 +23707,20 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderLegalDisclaimerSection(
                     .fillMaxWidth()
                     .padding(horizontal = 8.dp)
                     .background(
-                        color = if (isFrostedGlassEnabled) {
-                            if (isDark) {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.15f)
-                            } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            }
+                        brush = if (isFrostedGlassEnabled) {
+                            GlassTheme.getCardBackgroundBrush(isDark, frostedTransparency)
                         } else {
-                            MaterialTheme.colorScheme.surfaceVariant
+                            androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.surfaceVariant)
                         },
                         shape = RoundedCornerShape(32.dp)
                     )
                     .border(
                         width = 1.dp,
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
+                        brush = if (isFrostedGlassEnabled) {
+                            GlassTheme.getCardBorderBrush(isDark)
+                        } else {
+                            androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                        },
                         shape = RoundedCornerShape(32.dp)
                     )
                     .padding(20.dp)
@@ -26862,10 +26712,10 @@ fun WearOsLivePreview(
                                                 }
 
                                                 if (points.size > 1) {
-                                                    val strokeWidth = (barWidth.value * 0.13f).coerceIn(1.8f, 3.8f).dp.toPx()
+                                                    val strokeWidth = if (goalLineSquiggly) (barWidth.value * 0.20f).coerceIn(2.8f, 5.0f).dp.toPx() else (barWidth.value * 0.13f).coerceIn(1.8f, 3.8f).dp.toPx()
                                                     if (goalLineSquiggly) {
-                                                        val amplitude = (barWidth.value * 0.20f).coerceIn(2.0f, 5.0f).dp.toPx()
-                                                        val period = (barWidth.value * 0.85f).coerceIn(10f, 22f).dp.toPx()
+                                                        val amplitude = (barWidth.value * 0.32f).coerceIn(3.5f, 7.5f).dp.toPx()
+                                                        val period = (barWidth.value * 1.10f).coerceIn(14f, 28f).dp.toPx()
                                                         val twoPiOverPeriod = (2 * Math.PI / period).toFloat()
                                                         
                                                         val firstP = points.first()
@@ -27133,17 +26983,18 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderWearOsSettingsSection_d
         val watchBatteryLevel by viewModel.watchBatteryLevel.collectAsStateWithLifecycle()
         val watchCompanionDetected by viewModel.watchCompanionDetected.collectAsStateWithLifecycle()
         
+        val isDark = MaterialTheme.colorScheme.background.luminance() < 0.5f
         val isFrostedGlassEnabled = LocalFrostedGlassEnabled.current
         val frostedTransparency = LocalFrostedGlassTransparency.current
         
         val cardBgColor = if (isFrostedGlassEnabled) {
-            MaterialTheme.colorScheme.surface.copy(alpha = frostedTransparency * 0.35f)
+            GlassTheme.getSubCardColor(isDark, frostedTransparency)
         } else {
             MaterialTheme.colorScheme.surfaceVariant
         }
         
         val strokeColor = if (isFrostedGlassEnabled) {
-            Color.White.copy(alpha = 0.15f)
+            Color.White.copy(alpha = if (isDark) 0.18f else 0.40f)
         } else {
             MaterialTheme.colorScheme.outlineVariant
         }

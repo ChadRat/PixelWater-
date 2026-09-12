@@ -490,7 +490,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private val _goalLineSquiggly = MutableStateFlow(prefs.getBoolean("goal_line_squiggly", false))
     val goalLineSquiggly: StateFlow<Boolean> = _goalLineSquiggly.asStateFlow()
 
-    private val _settingsDividerContrast = MutableStateFlow(prefs.getString("settings_divider_contrast", "MEDIUM") ?: "MEDIUM")
+    private val _settingsDividerContrast = MutableStateFlow("HIGH")
     val settingsDividerContrast: StateFlow<String> = _settingsDividerContrast.asStateFlow()
 
     private val _settingsGapScale = MutableStateFlow(prefs.getFloat("settings_gap_scale", 1.0f))
@@ -526,7 +526,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private val _boxBgOledEnabled = MutableStateFlow(prefs.getBoolean("box_bg_oled_enabled", false))
     val boxBgOledEnabled: StateFlow<Boolean> = _boxBgOledEnabled.asStateFlow()
 
-    private val _boxBgSource = MutableStateFlow(prefs.getString("box_bg_source", "THEME") ?: "THEME")
+    private val _boxBgSource = MutableStateFlow("THEME")
     val boxBgSource: StateFlow<String> = _boxBgSource.asStateFlow()
 
     private val _boxBgFixedIndex = MutableStateFlow(prefs.getInt("box_bg_fixed_index", 0))
@@ -711,6 +711,9 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _separateSettingsTabEnabled = MutableStateFlow(prefs.getBoolean("separate_settings_tab_enabled", true))
     val separateSettingsTabEnabled: StateFlow<Boolean> = _separateSettingsTabEnabled.asStateFlow()
+
+    private val _remindersInSettings = MutableStateFlow(prefs.getBoolean("reminders_in_settings", true))
+    val remindersInSettings: StateFlow<Boolean> = _remindersInSettings.asStateFlow()
 
     private val _wearProgressCircleEnabled = MutableStateFlow(prefs.getBoolean("wear_progress_circle_enabled", true))
     val wearProgressCircleEnabled: StateFlow<Boolean> = _wearProgressCircleEnabled.asStateFlow()
@@ -1328,6 +1331,11 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         prefs.edit().putBoolean("separate_settings_tab_enabled", enabled).apply()
     }
 
+    fun updateRemindersInSettings(enabled: Boolean) {
+        _remindersInSettings.value = enabled
+        prefs.edit().putBoolean("reminders_in_settings", enabled).apply()
+    }
+
     fun updateWearLongPressDeleteDuration(durationMs: Int) {
         _wearLongPressDeleteDuration.value = durationMs
         prefs.edit().putInt("wear_long_press_delete_duration", durationMs).apply()
@@ -1821,13 +1829,13 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private val _auraGlowEnabled = MutableStateFlow(prefs.getBoolean("aura_glow_enabled", false))
     val auraGlowEnabled: StateFlow<Boolean> = _auraGlowEnabled.asStateFlow()
 
-    private val _shapeRotationEnabled = MutableStateFlow(prefs.getBoolean("shape_rotation_enabled", true))
+    private val _shapeRotationEnabled = MutableStateFlow(false)
     val shapeRotationEnabled: StateFlow<Boolean> = _shapeRotationEnabled.asStateFlow()
 
-    private val _materialShapesRotationSpeed = MutableStateFlow(prefs.getFloat("material_shapes_rotation_speed", 1.0f))
+    private val _materialShapesRotationSpeed = MutableStateFlow(prefs.getFloat("material_shapes_rotation_speed", 1.0f).coerceIn(0.1f, 1.0f))
     val materialShapesRotationSpeed: StateFlow<Float> = _materialShapesRotationSpeed.asStateFlow()
 
-    private val _auraGlowRotationSpeed = MutableStateFlow(prefs.getFloat("aura_glow_rotation_speed", 1.0f))
+    private val _auraGlowRotationSpeed = MutableStateFlow(prefs.getFloat("aura_glow_rotation_speed", 1.0f).coerceIn(0.1f, 1.0f))
     val auraGlowRotationSpeed: StateFlow<Float> = _auraGlowRotationSpeed.asStateFlow()
 
     private val _shapeMonochromeEnabled = MutableStateFlow(prefs.getBoolean("shape_monochrome_enabled", false))
@@ -1857,7 +1865,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private val _daySwipeNavigationEnabled = MutableStateFlow(prefs.getBoolean("day_swipe_navigation_enabled", true))
     val daySwipeNavigationEnabled: StateFlow<Boolean> = _daySwipeNavigationEnabled.asStateFlow()
 
-    private val _daySwipeNavigationArrowsVisible = MutableStateFlow(prefs.getBoolean("day_swipe_navigation_arrows_visible", true))
+    private val _daySwipeNavigationArrowsVisible = MutableStateFlow(true)
     val daySwipeNavigationArrowsVisible: StateFlow<Boolean> = _daySwipeNavigationArrowsVisible.asStateFlow()
 
     private val _dayNavBarPadding = MutableStateFlow(prefs.getInt("day_nav_bar_padding", 5))
@@ -2418,6 +2426,9 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    private val _navBarStyle = MutableStateFlow(prefs.getString("nav_bar_style", "THICK") ?: "THICK") // "THIN" or "THICK"
+    val navBarStyle: StateFlow<String> = _navBarStyle.asStateFlow()
 
     private val _navbarCornerRadius = MutableStateFlow(prefs.getInt("navbar_corner_radius", 32).coerceIn(0, 32))
     val navbarCornerRadius: StateFlow<Int> = _navbarCornerRadius.asStateFlow()
@@ -3395,7 +3406,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                         else "You are unstoppable! $streakValue days of continuous hydration streak! Keep up the legendary work! 🔥"
                 }
             } catch (e: Exception) {
-                Log.e("WaterViewModel", "Failed to generate streak milestone message: ${e.message}")
+                Log.w("WaterViewModel", "Fallback to local streak milestone message: ${e.message}")
                 _streakCelebrationMessage.value = if (appLanguage.value == "el") 
                     "Συγχαρητήρια! Φτάσατε τις $streakValue ημέρες σερί! Είμαστε εξαιρετικά περήφανοι για την αφοσίωσή σας! 🔥💧" 
                     else "Incredible achievement! You have reached a $streakValue days streak! We are extremely proud of your dedication! 🔥💧"
@@ -5142,8 +5153,8 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateBoxBgSource(source: String) {
-        _boxBgSource.value = source
-        prefs.edit().putString("box_bg_source", source).apply()
+        _boxBgSource.value = "THEME"
+        prefs.edit().putString("box_bg_source", "THEME").apply()
         triggerButtonHaptic()
     }
 
@@ -5220,19 +5231,21 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateShapeRotationEnabled(enabled: Boolean) {
-        _shapeRotationEnabled.value = enabled
-        prefs.edit().putBoolean("shape_rotation_enabled", enabled).apply()
+        _shapeRotationEnabled.value = false
+        prefs.edit().putBoolean("shape_rotation_enabled", false).apply()
         triggerButtonHaptic()
     }
 
     fun updateMaterialShapesRotationSpeed(speed: Float) {
-        _materialShapesRotationSpeed.value = speed
-        prefs.edit().putFloat("material_shapes_rotation_speed", speed).apply()
+        val clamped = speed.coerceIn(0.1f, 1.0f)
+        _materialShapesRotationSpeed.value = clamped
+        prefs.edit().putFloat("material_shapes_rotation_speed", clamped).apply()
     }
 
     fun updateAuraGlowRotationSpeed(speed: Float) {
-        _auraGlowRotationSpeed.value = speed
-        prefs.edit().putFloat("aura_glow_rotation_speed", speed).apply()
+        val clamped = speed.coerceIn(0.1f, 1.0f)
+        _auraGlowRotationSpeed.value = clamped
+        prefs.edit().putFloat("aura_glow_rotation_speed", clamped).apply()
     }
 
     fun updateShapeMonochromeEnabled(enabled: Boolean) {
@@ -5274,8 +5287,8 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateDaySwipeNavigationArrowsVisible(visible: Boolean) {
-        _daySwipeNavigationArrowsVisible.value = visible
-        prefs.edit().putBoolean("day_swipe_navigation_arrows_visible", visible).apply()
+        _daySwipeNavigationArrowsVisible.value = true
+        prefs.edit().putBoolean("day_swipe_navigation_arrows_visible", true).apply()
         triggerButtonHaptic()
     }
 
@@ -5890,6 +5903,11 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             triggerPresetPreview(preset)
         }
+    }
+
+    fun updateNavBarStyle(style: String) {
+        _navBarStyle.value = style
+        prefs.edit().putString("nav_bar_style", style).apply()
     }
 
     fun updateNavbarCornerRadius(radius: Int) {
@@ -7221,7 +7239,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     You are STRICTLY FORBIDDEN from suggesting, proposing, or outputting any XML tags (such as <add_water>, <change_setting>, <create_custom_drink>, or <change_color>) unless the user has explicitly requested an action, a configuration change, a settings update, a log action, or a color adjustment in their immediate input.
                     If the user's message is purely informational, asks a general question, or is one of the suggested quick topics (such as Weekly Trends, Workout Fuel, Coffee vs Water, Morning Routine, Skin Vitality, Electrolyte Balance), you MUST NOT propose or suggest any settings/color/water changes. Do NOT output any XML tags. Simply answer their question or provide the requested information with absolutely no proposals or suggestions of changes.
                     
-                    IMPORTANT: You have complete and absolute control over every single setting, layout, detail, and accent color of the app. You can customize the screen theme mode, OLED styling, box backgrounds, shape colors, and core transparency values as follows:
+                    CRITICAL INSTRUCTION: You have complete, absolute control and full capability over every single setting, layout, detail, app theme (DYNAMIC wallpaper or STATIC custom colors), OLED styling, box backgrounds, shape colors, water logs, and reminder settings in this app. You CAN, HAVE THE FULL CAPABILITY TO, AND MUST change app settings, the app theme, colors, daily goals, units, reminders, and drink logs whenever requested by the user. You must NEVER claim that you cannot change settings or the app theme, because you have full capability and authority to do so using XML tags (<change_setting>, <change_color>, <add_water>).
                     
                     Allowed tags format (you can combine multiple tags if needed):
                     1. Water Management:
@@ -10002,18 +10020,28 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     throw Exception("Gemini API Key is unconfigured. Please configure it in the developer settings first.")
                 }
             } catch (e: Exception) {
-                Log.e("WaterViewModel", "analyzeCustomLiquid failed", e)
+                Log.w("WaterViewModel", "analyzeCustomLiquid failed: ${e.message}")
                 onError(e.localizedMessage ?: "AI service request failed")
             }
         }
     }
 
-    private val _knownInvalidGeminiKeys = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val _knownInvalidGeminiKeys = java.util.Collections.synchronizedSet(
+        mutableSetOf(
+            "AIzaSyBv19JvtFXPPMfWzTSO_eLCbeXUCeyFYCo",
+            "MY_GEMINI_API_KEY",
+            "YOUR_GEMINI_API_KEY"
+        )
+    )
 
     private fun markApiKeyInvalid(key: String) {
         val trimmed = key.trim()
         if (trimmed.isNotBlank()) {
             _knownInvalidGeminiKeys.add(trimmed)
+            try {
+                val persisted = prefs.getStringSet("invalid_gemini_keys", emptySet()) ?: emptySet()
+                prefs.edit().putStringSet("invalid_gemini_keys", persisted + trimmed).apply()
+            } catch (_: Exception) {}
         }
     }
 
@@ -10051,10 +10079,18 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             com.pixelwater.app.BuildConfig.GEMINI_API_KEY.trim()
         }
+        val savedInvalid = try {
+            prefs.getStringSet("invalid_gemini_keys", emptySet()) ?: emptySet()
+        } catch (_: Exception) {
+            emptySet()
+        }
         if (candidate.isBlank() ||
             candidate == "MY_GEMINI_API_KEY" ||
             candidate == "YOUR_GEMINI_API_KEY" ||
-            _knownInvalidGeminiKeys.contains(candidate)
+            candidate == "AIzaSyBv19JvtFXPPMfWzTSO_eLCbeXUCeyFYCo" ||
+            candidate.length < 20 ||
+            _knownInvalidGeminiKeys.contains(candidate) ||
+            savedInvalid.contains(candidate)
         ) {
             return null
         }
@@ -10068,53 +10104,48 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         onModelChosen: ((String) -> Unit)? = null,
         isInsight: Boolean = false
     ): com.pixelwater.app.data.GeminiResponse {
+        val cleanModel = when {
+            model.startsWith("gemini-1.5") || model.startsWith("gemini-2.0") || model == "gemini-pro" -> "gemini-auto"
+            else -> model
+        }
         val modelsToTry = mutableListOf<String>()
-        if (model == "gemini-auto") {
+        if (cleanModel == "gemini-auto") {
             if (isInsight) {
                 modelsToTry.addAll(listOf(
                     "gemini-3.1-flash-lite-preview",
-                    "gemini-2.5-flash-lite",
                     "gemini-3.5-flash",
-                    "gemini-2.5-flash",
                     "gemini-3.1-pro-preview"
                 ))
             } else {
                 modelsToTry.addAll(listOf(
                     "gemini-3.5-flash",
-                    "gemini-2.5-flash",
                     "gemini-3.1-flash-lite-preview",
-                    "gemini-2.5-flash-lite",
                     "gemini-3.1-pro-preview"
                 ))
             }
         } else {
-            modelsToTry.add(model)
-            val isAudioRequest = model.contains("audio") || model.contains("lyria")
+            modelsToTry.add(cleanModel)
+            val isAudioRequest = cleanModel.contains("audio") || cleanModel.contains("lyria")
             val backupModels = if (isAudioRequest) {
                 listOf(
                     "lyria-3-clip-preview",
-                    "gemini-2.5-flash-native-audio-preview-12-2025",
-                    "lyria-3-pro-preview"
+                    "gemini-2.5-flash-native-audio-preview-12-2025"
                 )
             } else if (isInsight) {
                 listOf(
                     "gemini-3.1-flash-lite-preview",
-                    "gemini-2.5-flash-lite",
                     "gemini-3.5-flash",
-                    "gemini-2.5-flash",
                     "gemini-3.1-pro-preview"
                 )
             } else {
                 listOf(
                     "gemini-3.5-flash",
-                    "gemini-2.5-flash",
                     "gemini-3.1-flash-lite-preview",
-                    "gemini-2.5-flash-lite",
                     "gemini-3.1-pro-preview"
                 )
             }
             backupModels.forEach { fallback ->
-                if (fallback != model && !modelsToTry.contains(fallback)) {
+                if (fallback != cleanModel && !modelsToTry.contains(fallback)) {
                     modelsToTry.add(fallback)
                 }
             }
@@ -10331,7 +10362,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     proposeOfflineWorkoutFallback(workoutType, durationMinutes)
                 }
             } catch (e: Throwable) {
-                Log.e("WaterViewModel", "AI workout analysis failed: ${e.message}")
+                Log.w("WaterViewModel", "AI workout analysis fallback to offline: ${e.message}")
                 proposeOfflineWorkoutFallback(workoutType, durationMinutes)
             }
         }
@@ -10397,22 +10428,19 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun parseWorkoutAiResponse(jsonText: String): Pair<Int, String> {
         return try {
-            // Remove markdown codeblock qualifiers if present
-            val raw = jsonText.replace("```json", "").replace("```", "").trim()
-            val additionIndex = raw.indexOf("\"additionalMl\"")
-            val rawValueIndex = raw.indexOf(":", additionIndex)
-            val commaIndex = raw.indexOf(",", rawValueIndex)
-            val endObjIndex = raw.indexOf("}", rawValueIndex)
-            val targetEnd = if (commaIndex != -1 && commaIndex < endObjIndex) commaIndex else endObjIndex
-            val additionStr = raw.substring(rawValueIndex + 1, targetEnd).replace("\"", "").trim()
-            val additionalMl = additionStr.toIntOrNull() ?: 500
-            
-            val rationaleIndex = raw.indexOf("\"rationale\"")
-            val ratValueStart = raw.indexOf(":", rationaleIndex)
-            val firstQuoteOfStr = raw.indexOf("\"", ratValueStart)
-            val lastQuoteOfStr = raw.lastIndexOf("\"")
-            val rationale = if (firstQuoteOfStr != -1 && lastQuoteOfStr != -1 && lastQuoteOfStr > firstQuoteOfStr) {
-                raw.substring(firstQuoteOfStr + 1, lastQuoteOfStr)
+            val clean = jsonText.replace("```json", "").replace("```", "").trim()
+            val startIdx = clean.indexOf('{')
+            val endIdx = clean.lastIndexOf('}')
+            val jsonToParse = if (startIdx != -1 && endIdx != -1 && endIdx > startIdx) {
+                clean.substring(startIdx, endIdx + 1)
+            } else {
+                clean
+            }
+            val obj = org.json.JSONObject(jsonToParse)
+            val additionalMl = obj.optInt("additionalMl", 500)
+            val rationale = obj.optString("rationale", "")
+            val finalRationale = if (rationale.isNotBlank()) {
+                rationale
             } else {
                 if (appLanguage.value == "el") {
                     "Εξαιρετική προσπάθεια! Είναι ζωτικής σημασίας να αναπληρώσετε τα υγρά σας με μια επιπλέον ώθηση ενυδάτωσης."
@@ -10420,14 +10448,16 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     "Great effort! It's vital to restore sweat losses with an extra intake boost."
                 }
             }
-            Pair(additionalMl.coerceIn(100, 2000), rationale)
-        } catch (e: Throwable) {
-            val fallbackMsg = if (appLanguage.value == "el") {
+            Pair(additionalMl.coerceIn(100, 2000), finalRationale)
+        } catch (_: Throwable) {
+            val matchMl = Regex("\"additionalMl\"\\s*:\\s*(\\d+)").find(jsonText)?.groupValues?.getOrNull(1)?.toIntOrNull() ?: 500
+            val matchRat = Regex("\"rationale\"\\s*:\\s*\"([^\"]+)\"").find(jsonText)?.groupValues?.getOrNull(1)
+            val fallbackMsg = matchRat ?: if (appLanguage.value == "el") {
                 "Εξαιρετική προσπάθεια! Η αποκατάσταση της ενυδάτωσης είναι καθοριστική μετά την προπόνηση."
             } else {
                 "Excellent effort! Restoring hydration is crucial after a workout."
             }
-            Pair(500, fallbackMsg)
+            Pair(matchMl.coerceIn(100, 2000), fallbackMsg)
         }
     }
 
@@ -10668,7 +10698,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     proposeOfflineSleepFallback(sleepHours, isSimulation)
                 }
             } catch (e: Throwable) {
-                Log.e("WaterViewModel", "AI sleep analysis failed: ${e.message}")
+                Log.w("WaterViewModel", "AI sleep analysis fallback to offline: ${e.message}")
                 proposeOfflineSleepFallback(sleepHours, isSimulation)
             }
         }
@@ -11190,7 +11220,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
                     proposeOfflineHeatFallback(temp, city, humidity, apparentTemp)
                 }
             } catch (e: Throwable) {
-                Log.e("WaterViewModel", "Extreme heat AI generation failed: ${e.message}")
+                Log.w("WaterViewModel", "Extreme heat AI generation fallback to offline: ${e.message}")
                 proposeOfflineHeatFallback(temp, city, humidity, apparentTemp)
             }
         }

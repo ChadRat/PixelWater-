@@ -13,8 +13,7 @@ gradle-app.setting
 *.aar
 *.ap_
 *.aab
-.build-outputs/
-0_build-outputs/
+build-outputs/
 app-debug.apk
 PixelWater_WearOS_App.apk
 

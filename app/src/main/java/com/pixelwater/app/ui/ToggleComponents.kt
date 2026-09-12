@@ -166,6 +166,7 @@ fun TitleFaceToggle(
     }
 
     val isTransparent = LocalTransparentComponentsEnabled.current
+    val isFrosted = LocalFrostedGlassEnabled.current
     val transLimit = LocalComponentsTransparency.current
     val tc = if (isTransparent) transLimit else 1f
 
@@ -189,20 +190,24 @@ fun TitleFaceToggle(
             .fillMaxWidth()
             .height(54.dp)
             .scale(pressScale.value)
-            .shadow(
-                elevation = 1.dp,
-                shape = chassisShape,
-                ambientColor = Color.Black.copy(alpha = 0.05f),
-                spotColor = Color.Black.copy(alpha = 0.08f)
+            .then(
+                if (!isTransparent && !isFrosted) Modifier.shadow(
+                    elevation = 1.dp,
+                    shape = chassisShape,
+                    ambientColor = Color.Black.copy(alpha = 0.05f),
+                    spotColor = Color.Black.copy(alpha = 0.08f)
+                ) else Modifier
             )
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f * tc),
                 shape = chassisShape
             )
-            .border(
-                width = 1.dp,
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
-                shape = chassisShape
+            .then(
+                if (!isTransparent && !isFrosted) Modifier.border(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                    shape = chassisShape
+                ) else Modifier
             )
             .padding(4.dp)
             .clip(RoundedCornerShape(maxOf(14, cornerRadius - 4).dp)),
@@ -241,30 +246,32 @@ fun TitleFaceToggle(
             label = "face_toggle_stretch"
         )
 
-        // Segment divider notches between inactive options
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            for (i in 0 until segmentCount - 1) {
+        // Segment divider notches between inactive options (hidden during transparency to avoid vertical line artifacts)
+        if (!isTransparent && !isFrosted) {
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                for (i in 0 until segmentCount - 1) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    val isNearActive = abs(i - safeIndex) <= 0 || (isDragging && abs((dragOffsetPx / segmentWidthPx) - (i + 0.5f)) < 0.75f)
+                    val dividerAlpha by animateFloatAsState(
+                        targetValue = if (isNearActive) 0f else 0.25f,
+                        animationSpec = spring(stiffness = Spring.StiffnessHigh),
+                        label = "divider_alpha_$i"
+                    )
+                    Box(
+                        modifier = Modifier
+                            .width(1.dp)
+                            .height(14.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = dividerAlpha * tc),
+                                shape = CircleShape
+                            )
+                    )
+                }
                 Spacer(modifier = Modifier.weight(1f))
-                val isNearActive = abs(i - safeIndex) <= 0 || (isDragging && abs((dragOffsetPx / segmentWidthPx) - (i + 0.5f)) < 0.75f)
-                val dividerAlpha by animateFloatAsState(
-                    targetValue = if (isNearActive) 0f else 0.25f,
-                    animationSpec = spring(stiffness = Spring.StiffnessHigh),
-                    label = "divider_alpha_$i"
-                )
-                Box(
-                    modifier = Modifier
-                        .width(1.dp)
-                        .height(14.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = dividerAlpha * tc),
-                            shape = CircleShape
-                        )
-                )
             }
-            Spacer(modifier = Modifier.weight(1f))
         }
 
         // Active Floating Pill Indicator (Google Pixel M3 Expressive container)
@@ -274,11 +281,13 @@ fun TitleFaceToggle(
                 .offset { androidx.compose.ui.unit.IntOffset(animatedOffsetPx.roundToInt(), 0) }
                 .width(androidx.compose.ui.unit.Dp((segmentWidthPx * stretchFactor) / density))
                 .fillMaxHeight()
-                .shadow(
-                    elevation = if (isDragging) 5.dp else 2.dp,
-                    shape = pillShape,
-                    ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
-                    spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                .then(
+                    if (!isTransparent && !isFrosted) Modifier.shadow(
+                        elevation = if (isDragging) 5.dp else 2.dp,
+                        shape = pillShape,
+                        ambientColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                        spotColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                    ) else Modifier
                 )
                 .background(
                     brush = Brush.horizontalGradient(

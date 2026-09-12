@@ -1423,58 +1423,6 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
                 triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
             )
 
-            if (currentDividerStyle == "STRAIGHT" || currentDividerStyle == "SQUIGGLY") {
-                var isContrastExpanded by remember { mutableStateOf(false) }
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = if (appLanguage == "el") "Αντίθεση Διαχωριστικής Γραμμής" else "Divider Line Contrast",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    IconButton(
-                        onClick = {
-                            isContrastExpanded = !isContrastExpanded
-                            viewModel.triggerButtonHaptic()
-                        }
-                    ) {
-                        Icon(
-                            imageVector = if (isContrastExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "Toggle Contrast Options",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                if (isContrastExpanded) {
-                    val currentContrast by viewModel.settingsDividerContrast.collectAsStateWithLifecycle()
-                    val contrastOptions = listOf("LOW", "MEDIUM", "HIGH")
-                    val contrastLabels = if (appLanguage == "el") {
-                        listOf("Χαμηλή", "Μεσαία", "Υψηλή")
-                    } else {
-                        listOf("Low", "Medium", "High")
-                    }
-                    val selectedContrastIndex = contrastOptions.indexOf(currentContrast).coerceAtLeast(0)
-
-                    Spacer(modifier = Modifier.height(4.dp))
-                    MultiWayToggle(
-                        selectedIndex = selectedContrastIndex,
-                        options = contrastLabels,
-                        onModeSelect = { index ->
-                            viewModel.updateSettingsDividerContrast(contrastOptions[index])
-                        },
-                        triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                        triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
-                    )
-                }
-            }
-
             if (currentDividerStyle == "GAPS") {
                 val gapScale by viewModel.settingsGapScale.collectAsStateWithLifecycle()
                 HorizontalDivider(paddingVertical = 12.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
@@ -1626,6 +1574,53 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
         SettingsCategoryHeader(if (appLanguage == "el") "ΠΛΟΗΓΗΣΗ" else "NAVIGATION", icon = Icons.Rounded.Swipe)
         ChunkySettingCard {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // Navigation Bar Style (Thin vs Full)
+                val navBarStyle by viewModel.navBarStyle.collectAsStateWithLifecycle()
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Rounded.Navigation,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Column {
+                                Text(
+                                    text = if (appLanguage == "el") "Στυλ Μπάρας Πλοήγησης" else "Navigation Bar Style",
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (appLanguage == "el") {
+                                        if (navBarStyle == "THIN") "Λεπτή αιωρούμενη νησίδα" else "Παχιά αιωρούμενη νησίδα"
+                                    } else {
+                                        if (navBarStyle == "THIN") "Thin floating island" else "Thick floating island"
+                                    },
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(10.dp))
+                    MultiWayToggle(
+                        selectedIndex = if (navBarStyle == "THIN") 0 else 1,
+                        options = if (appLanguage == "el") listOf("Λεπτή", "Παχιά") else listOf("Thin", "Thick"),
+                        onModeSelect = { index ->
+                            val selected = if (index == 0) "THIN" else "THICK"
+                            viewModel.updateNavBarStyle(selected)
+                        },
+                        triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
+                        triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
                 // Horizontal Swipe Navigation at the very top!
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1674,6 +1669,46 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
 
+                val remindersInSettings by viewModel.remindersInSettings.collectAsStateWithLifecycle()
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Rounded.Notifications,
+                            contentDescription = null,
+                            tint = if (remindersInSettings) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                text = if (appLanguage == "el") "Υπενθυμίσεις στις Ρυθμίσεις" else "Reminders in Settings",
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = if (appLanguage == "el") {
+                                    if (remindersInSettings) "Οι υπενθυμίσεις βρίσκονται ως παράθυρο στις ρυθμίσεις αντί για την κάτω μπάρα." else "Οι υπενθυμίσεις εμφανίζονται στην κάτω μπάρα πλοήγησης."
+                                } else {
+                                    if (remindersInSettings) "Reminders tab is located in Settings instead of the bottom navigation bar." else "Reminders tab is displayed in the bottom navigation bar."
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    ChunkySettingSwitch(
+                        checked = remindersInSettings,
+                        onCheckedChange = { 
+                            viewModel.updateRemindersInSettings(it)
+                            viewModel.triggerButtonHaptic()
+                        }
+                    )
+                }
+
+                HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
                 val daySwipeNavigationEnabled by viewModel.daySwipeNavigationEnabled.collectAsStateWithLifecycle()
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -1692,29 +1727,6 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
                         checked = daySwipeNavigationEnabled,
                         onCheckedChange = { viewModel.updateDaySwipeNavigationEnabled(it) }
                     )
-                }
-                
-                if (daySwipeNavigationEnabled) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                    val daySwipeNavigationArrowsVisible by viewModel.daySwipeNavigationArrowsVisible.collectAsStateWithLifecycle()
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                            Icon(imageVector = Icons.Rounded.KeyboardArrowLeft, contentDescription = null, tint = if (daySwipeNavigationArrowsVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(modifier = Modifier.width(16.dp))
-                            Column {
-                                Text(if (appLanguage == "el") "Ορατά Βελάκια" else "Visible Arrows", fontWeight = FontWeight.Bold)
-                                Text(if (appLanguage == "el") "Εμφάνιση των βελών ακόμα και όταν οι χειρονομίες είναι ενεργές." else "Show arrows even when swipe gestures are enabled.", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        ChunkySettingSwitch(
-                            checked = daySwipeNavigationArrowsVisible,
-                            onCheckedChange = { viewModel.updateDaySwipeNavigationArrowsVisible(it) }
-                        )
-                    }
                 }
                 
                 if (isNerdMode) {
@@ -1780,6 +1792,131 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
                             triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
                             triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
                         )
+                    }
+                }
+            }
+        }
+    }
+
+    // DAY ROLL TIMING
+    item {
+        val lateNightLoggingEnabled by viewModel.lateNightLoggingEnabled.collectAsStateWithLifecycle()
+        val lateNightRolloverHour by viewModel.lateNightRolloverHour.collectAsStateWithLifecycle()
+
+        Spacer(modifier = Modifier.height(12.dp))
+        SettingsCategoryHeader(
+            title = if (appLanguage == "el") "ΜΕΤΑΒΑΣΗ ΗΜΕΡΑΣ" else "DAY ROLL TIMING",
+            icon = Icons.Rounded.Nightlight
+        )
+        ChunkySettingCard {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Rounded.Nightlight,
+                            contentDescription = null,
+                            tint = Color(0xFF673AB7)
+                        )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Column {
+                            Text(
+                                if (appLanguage == "el") "Παράταση μετά τα Μεσάνυχτα" else "Late-Night Grace Period",
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                if (appLanguage == "el") {
+                                    "Διατηρεί την προηγούμενη ημέρα ενεργή μετά τα μεσάνυχτα για σωστή καταγραφή."
+                                } else {
+                                    "Keep tracking on yesterday's date after midnight so late logs count properly."
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                    ChunkySettingSwitch(
+                        checked = lateNightLoggingEnabled,
+                        onCheckedChange = { 
+                            viewModel.updateLateNightLoggingEnabled(it) 
+                            viewModel.triggerButtonHaptic()
+                        }
+                    )
+                }
+
+                if (lateNightLoggingEnabled) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                if (appLanguage == "el") "Ώρα Μετάβασης" else "Rollover Hour",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                if (appLanguage == "el") {
+                                    "Η νέα ημέρα θα ξεκινήσει στις $lateNightRolloverHour:00 π.μ."
+                                } else {
+                                    "Today's cycle will begin at $lateNightRolloverHour:00 AM"
+                                },
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            // Decrement button
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    if (lateNightRolloverHour > 1) {
+                                        viewModel.updateLateNightRolloverHour(lateNightRolloverHour - 1)
+                                        viewModel.triggerToggleHaptic()
+                                    }
+                                },
+                                enabled = lateNightRolloverHour > 1
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Remove,
+                                    contentDescription = "Decrease",
+                                    tint = if (lateNightRolloverHour > 1) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            }
+
+                            Text(
+                                text = "$lateNightRolloverHour:00",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+
+                            // Increment button
+                            androidx.compose.material3.IconButton(
+                                onClick = {
+                                    if (lateNightRolloverHour < 8) {
+                                        viewModel.updateLateNightRolloverHour(lateNightRolloverHour + 1)
+                                        viewModel.triggerToggleHaptic()
+                                    }
+                                },
+                                enabled = lateNightRolloverHour < 8
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Add,
+                                    contentDescription = "Increase",
+                                    tint = if (lateNightRolloverHour < 8) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f)
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -1887,182 +2024,6 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
                 }
             }
         }
-        }
-    }
-
-    // 3.5 CONTAINERS & BOXES BACKGROUND
-    item {
-        Spacer(modifier = Modifier.height(12.dp))
-        SettingsCategoryHeader(
-            title = if (appLanguage == "el") "ΥΠΟΒΑΘΡΟ ΚΟΥΤΙΩΝ & ΚΑΡΤΩΝ" else "CONTAINER & BOX BACKGROUND",
-            icon = Icons.Rounded.Dashboard
-        )
-        ChunkySettingCard {
-            val configProfile by viewModel.configProfile.collectAsStateWithLifecycle()
-            val isNerdMode = configProfile == "NERD_MODE"
-            val boxBgSource by viewModel.boxBgSource.collectAsStateWithLifecycle()
-            val boxBgPaletteChoice by viewModel.boxBgPaletteChoice.collectAsStateWithLifecycle()
-            val boxBgOledEnabled by viewModel.boxBgOledEnabled.collectAsStateWithLifecycle()
-            val oledBackgroundAfterMidnight by viewModel.oledBackgroundAfterMidnight.collectAsStateWithLifecycle()
-            val oledBackgroundTime by viewModel.oledBackgroundTime.collectAsStateWithLifecycle()
-
-            // Main option selector:
-            Text(
-                text = if (appLanguage == "el") "Επιλογή Υποβάθρου Καρτών" else "Box Background Customization",
-                fontSize = 15.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (appLanguage == "el") "Ισχύει όταν το θέμα Glass είναι απενεργοποιημένο" else "Applies when Glass theme is turned off",
-                fontSize = 12.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-
-            MultiWayToggle(
-                selectedIndex = when (boxBgSource) {
-                    "THEME" -> 0
-                    "PALETTE" -> 1
-                    else -> 0
-                },
-                options = if (appLanguage == "el") {
-                    listOf("Θέμα", "Παλέτα")
-                } else {
-                    listOf("Theme", "Palette")
-                },
-                onModeSelect = { idx ->
-                    val newSource = when (idx) {
-                        0 -> "THEME"
-                        1 -> "PALETTE"
-                        else -> "THEME"
-                    }
-                    viewModel.updateBoxBgSource(newSource)
-                },
-                triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            when (boxBgSource) {
-                "THEME" -> {
-                    Text(
-                        text = if (appLanguage == "el") "Ακολουθεί το επιλεγμένο θέμα της εφαρμογής." else "Following default selected app theme background color (Surface Variant).",
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(horizontal = 4.dp)
-                    )
-                }
-                "PALETTE" -> {
-                    Text(
-                        text = if (appLanguage == "el") "Ανεξάρτητη Παλέτα Χρωμάτων" else "Independent Theme Palette Accent",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(
-                        text = if (appLanguage == "el") "Επιλέξτε ένα από τα 2 βασικά χρώματα του τρέχοντος θέματος (δουλεύει ανεξάρτητα από άλλους διακόπτες):" else "Select primary or secondary container from the theme colors (works completely independently of the main theme 3-point toggle):",
-                        fontSize = 12.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    ThreeWayColorToggle(
-                        currentMode = boxBgPaletteChoice,
-                        appLanguage = appLanguage,
-                        onModeSelect = { viewModel.updateBoxBgPaletteChoice(it) },
-                        triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                        triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() },
-                        usePaletteColors = true
-                    )
-                }
-            }
-
-            if (isNerdMode && oledModeEnabled && !isFrostedGlassEnabled) {
-                HorizontalDivider(paddingVertical = 16.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (appLanguage == "el") "OLED Υπόβαθρο Κουτιών" else "OLED Box Background",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (appLanguage == "el") "Κάνει το υπόβαθρο των καρτών/κουτιών απόλυτο μαύρο για οθόνες OLED" else "Makes the card/box background pitch black for OLED screens",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    ChunkySettingSwitch(
-                        checked = boxBgOledEnabled,
-                        onCheckedChange = { 
-                            viewModel.updateBoxBgOledEnabled(it)
-                        }
-                    )
-                }
-
-                HorizontalDivider(paddingVertical = 16.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = if (appLanguage == "el") "Αυτόματο OLED τη νύχτα" else "Auto OLED at Night",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = if (appLanguage == "el") "Ενεργοποιεί το OLED Background μετά από συγκεκριμένη ώρα (μέχρι 8 πμ)" else "Turns on OLED box backgrounds after a set time (until 8 AM)",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    ChunkySettingSwitch(
-                        checked = oledBackgroundAfterMidnight,
-                        onCheckedChange = { 
-                            viewModel.updateOledBackgroundAfterMidnight(it)
-                        }
-                    )
-                }
-
-                if (oledBackgroundAfterMidnight) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-                        val displayHour = if (oledBackgroundTime == 0) "Midnight (00:00)" else "${String.format("%02d", oledBackgroundTime)}:00"
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Start Time:", fontSize = 14.sp)
-                            Text(displayHour, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                        }
-                        Slider(
-                            value = oledBackgroundTime.toFloat(),
-                            onValueChange = { viewModel.updateOledBackgroundTime(it.toInt()) },
-                            valueRange = 0f..4f,
-                            steps = 3, // 0, 1, 2, 3, 4
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.primary,
-                                activeTrackColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                    }
-                }
-            }
         }
     }
 
@@ -2216,157 +2177,6 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
         }
         }
     }
-    // 2. TYPOGRAPHY & CONTRAST
-    item {
-        val configProfile by viewModel.configProfile.collectAsStateWithLifecycle()
-        val isNerdMode = configProfile == "NERD_MODE"
-        if (isNerdMode) {
-            Spacer(modifier = Modifier.height(12.dp))
-            SettingsCategoryHeader(if (appLanguage == "el") "ΤΥΠΟΓΡΑΦΙΑ & ΑΝΤΙΘΕΣΗ" else "TYPOGRAPHY & CONTRAST", icon = Icons.Rounded.FormatSize)
-            ChunkySettingCard {
-            val textContrast by viewModel.textContrastMode.collectAsState()
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Rounded.Contrast, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = if (appLanguage == "el") "Αντίθεση Κειμένου" else "Text Contrast",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                MultiWayToggle(
-                    selectedIndex = textContrast.coerceAtMost(2),
-                    options = if (appLanguage == "el") listOf("Κανονικό", "Μεσαίο", "Υψηλό") else listOf("Normal", "Medium", "High"),
-                    onModeSelect = { viewModel.updateTextContrastMode(it) },
-                    triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                    triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
-                )
-            }
-
-            HorizontalDivider(paddingVertical = 16.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-            val fontSizeMode by viewModel.fontSizeMode.collectAsState()
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Rounded.FormatSize, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = if (appLanguage == "el") "Μέγεθος Κειμένου" else "Font Size",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                MultiWayToggle(
-                    selectedIndex = fontSizeMode,
-                    options = if (appLanguage == "el") listOf("Κανονικό", "Μεσαίο", "Μεγάλο", "Τεράστιο") else listOf("Normal", "Medium", "Big", "Enormous"),
-                    onModeSelect = { viewModel.updateFontSizeMode(it) },
-                    triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                    triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
-                )
-            }
-
-            HorizontalDivider(paddingVertical = 16.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-            val textFontMode by viewModel.textFontMode.collectAsState()
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Rounded.Title, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = if (appLanguage == "el") "Γραμματοσειρά" else "Text Font",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                MultiWayToggle(
-                    selectedIndex = textFontMode,
-                    options = if (appLanguage == "el") listOf("Συσκευή", "Mονοδιάστατη", "Serif", "Sans-Serif") else listOf("Device", "Monospace", "Serif", "Sans-Serif"),
-                    onModeSelect = { viewModel.updateTextFontMode(it) },
-                    triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                    triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
-                )
-            }
-
-            HorizontalDivider(paddingVertical = 16.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-
-            val colorContrast by viewModel.colorContrastMode.collectAsState()
-            Column {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(imageVector = Icons.Rounded.InvertColors, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = if (appLanguage == "el") "Αντίθεση Χρωμάτων" else "Color Contrast",
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                MultiWayToggle(
-                    selectedIndex = colorContrast,
-                    options = if (appLanguage == "el") listOf("Κανονικό", "Μεσαίο", "Υψηλό", "Ακραίο") else listOf("Normal", "Medium", "High", "Extreme"),
-                    onModeSelect = { viewModel.updateColorContrastMode(it) },
-                    triggerLightHaptic = { viewModel.triggerToggleLightHaptic() },
-                    triggerSnapHaptic = { viewModel.triggerToggleSnapHaptic() }
-                )
-            }
-
-            HorizontalDivider(paddingVertical = 16.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-            
-            var isAdvancedExpanded by remember { mutableStateOf(false) }
-            Row(
-                modifier = Modifier.fillMaxWidth().clickable { isAdvancedExpanded = !isAdvancedExpanded }.padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(if (appLanguage == "el") "Σύνθετες Ρυθμίσεις" else "Advanced Settings", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
-                Icon(
-                    if (isAdvancedExpanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
-                    contentDescription = "Expand",
-                    tint = MaterialTheme.colorScheme.primary
-                )
-            }
-            
-            AnimatedVisibility(visible = isAdvancedExpanded) {
-                Column(verticalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(top = 16.dp)) {
-                    val devFontWeight by viewModel.devFontWeight.collectAsStateWithLifecycle()
-                    val devSmallestWidth by viewModel.devSmallestWidth.collectAsStateWithLifecycle()
-                    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
-                    
-                    DevOptionsSliderRow(
-                        titlePrefix = if (appLanguage == "el") "Βάρος γραμματοσειράς: " else "Font weight: ",
-                        value = devFontWeight,
-                        defaultValue = 500f,
-                        valueRange = 100f..900f,
-                        stepsCount = 9,
-                        onValueChange = { viewModel.updateDevFontWeight(it) },
-                        triggerHaptic = { viewModel.triggerSliderHaptic() },
-                        formatValue = { String.format(java.util.Locale.US, "%.0f", it) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    
-                    DevOptionsSliderRow(
-                        titlePrefix = if (appLanguage == "el") "Μικρότερο Πλάτος: " else "Smallest Width: ",
-                        value = devSmallestWidth,
-                        defaultValue = configuration.screenWidthDp.toFloat(),
-                        valueRange = 320f..600f,
-                        onValueChange = { viewModel.updateDevSmallestWidth(it) },
-                        triggerHaptic = { viewModel.triggerSliderHaptic() },
-                        formatValue = { String.format(java.util.Locale.US, "%.0f dp", it) },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        }
-    }
-    }
 
         item {
 
@@ -2390,37 +2200,8 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
                 Text("Aura Glow Background", fontWeight = FontWeight.Bold)
                 ChunkySettingSwitch(checked = auraGlowEnabled, onCheckedChange = { viewModel.updateAuraGlowEnabled(it) })
             }
-            HorizontalDivider(paddingVertical = 12.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Motion & Hovering Animation", fontWeight = FontWeight.Bold)
-                ChunkySettingSwitch(checked = shapeRotationEnabled, onCheckedChange = { viewModel.updateShapeRotationEnabled(it) })
-            }
 
             if (isNerdMode) {
-                if (materialShapesEnabled && shapeRotationEnabled) {
-                    HorizontalDivider(paddingVertical = 12.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                    Column {
-                        val materialShapesRotationSpeed by viewModel.materialShapesRotationSpeed.collectAsStateWithLifecycle()
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Material Shapes Speed", fontWeight = FontWeight.Bold)
-                            Text("${String.format("%.1f", materialShapesRotationSpeed)}x", fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                        }
-                        CapsulePatternSlider(value = materialShapesRotationSpeed, onValueChange = { viewModel.updateMaterialShapesRotationSpeed(it) }, valueRange = 0.1f..3.0f, triggerHaptic = { viewModel.triggerSliderHaptic() })
-                    }
-                }
-
-                if (auraGlowEnabled && shapeRotationEnabled) {
-                    HorizontalDivider(paddingVertical = 12.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
-                    Column {
-                        val auraGlowRotationSpeed by viewModel.auraGlowRotationSpeed.collectAsStateWithLifecycle()
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("Aura Glow Speed", fontWeight = FontWeight.Bold)
-                            Text("${String.format("%.1f", auraGlowRotationSpeed)}x", fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
-                        }
-                        CapsulePatternSlider(value = auraGlowRotationSpeed, onValueChange = { viewModel.updateAuraGlowRotationSpeed(it) }, valueRange = 0.1f..5.0f, triggerHaptic = { viewModel.triggerSliderHaptic() })
-                    }
-                }
-
                 // Background Contrast Slider
                 HorizontalDivider(paddingVertical = 12.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {

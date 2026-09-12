@@ -10,6 +10,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.speech.RecognizerIntent
 import android.widget.Toast
 import android.util.Log
 import androidx.glance.appwidget.updateAll
@@ -70,6 +71,9 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.animation.togetherWith
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -89,6 +93,7 @@ import com.pixelwater.app.R
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.pixelwater.app.data.WaterLog
@@ -108,10 +113,395 @@ import kotlin.math.sin
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.foundation.gestures.rememberScrollableState
+import androidx.compose.foundation.gestures.scrollable
+import androidx.compose.foundation.gestures.Orientation
 
 
 
 import com.pixelwater.app.data.*
+
+/**
+ * Expressive 12-lobed rounded scallop rosette shape matching Material 3 expressive badge
+ * with smooth, ultra-round pill edges.
+ */
+val ScallopedRosetteShape = GenericShape { size, _ ->
+    val lobes = 12
+    val radius = minOf(size.width, size.height) / 2f
+    val cx = size.width / 2f
+    val cy = size.height / 2f
+    val rMax = radius
+    val rMin = radius * 0.88f
+    val dTheta = (2f * Math.PI.toFloat()) / lobes
+    val handleFraction = (dTheta / 4f) * 0.92f
+
+    val startX = cx + rMin
+    val startY = cy
+    moveTo(startX, startY)
+
+    for (i in 0 until lobes) {
+        val a0 = i * dTheta
+        val aMid = a0 + dTheta / 2f
+        val a1 = (i + 1) * dTheta
+
+        val v0x = cx + rMin * kotlin.math.cos(a0)
+        val v0y = cy + rMin * kotlin.math.sin(a0)
+
+        val pmx = cx + rMax * kotlin.math.cos(aMid)
+        val pmy = cy + rMax * kotlin.math.sin(aMid)
+
+        val v1x = cx + rMin * kotlin.math.cos(a1)
+        val v1y = cy + rMin * kotlin.math.sin(a1)
+
+        val t0x = -kotlin.math.sin(a0)
+        val t0y = kotlin.math.cos(a0)
+        val cp1x = v0x + t0x * (rMin * handleFraction)
+        val cp1y = v0y + t0y * (rMin * handleFraction)
+
+        val tMidX = -kotlin.math.sin(aMid)
+        val tMidY = kotlin.math.cos(aMid)
+        val cp2x = pmx - tMidX * (rMax * handleFraction)
+        val cp2y = pmy - tMidY * (rMax * handleFraction)
+
+        cubicTo(cp1x, cp1y, cp2x, cp2y, pmx, pmy)
+
+        val cp3x = pmx + tMidX * (rMax * handleFraction)
+        val cp3y = pmy + tMidY * (rMax * handleFraction)
+
+        val t1x = -kotlin.math.sin(a1)
+        val t1y = kotlin.math.cos(a1)
+        val cp4x = v1x - t1x * (rMin * handleFraction)
+        val cp4y = v1y - t1y * (rMin * handleFraction)
+
+        cubicTo(cp3x, cp3y, cp4x, cp4y, v1x, v1y)
+    }
+    close()
+}
+
+/**
+ * Google Pixel-style rounded send arrow icon with round cap and round join
+ * pointing upward, matching Google Gemini and Material 3 expressive design.
+ */
+@Composable
+fun PixelSendArrowIcon(
+    tint: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val strokeWidth = w * 0.13f
+        val stroke = Stroke(
+            width = strokeWidth,
+            cap = StrokeCap.Round,
+            join = StrokeJoin.Round
+        )
+
+        val cx = w / 2f
+        val topY = h * 0.24f
+        val bottomY = h * 0.76f
+        val wingSpan = w * 0.25f
+        val wingDrop = h * 0.22f
+
+        // Chevron arrowhead (pointing straight UP) with rounded apex and rounded ends
+        val headPath = Path().apply {
+            moveTo(cx - wingSpan, topY + wingDrop)
+            lineTo(cx, topY)
+            lineTo(cx + wingSpan, topY + wingDrop)
+        }
+        drawPath(headPath, color = tint, style = stroke)
+
+        // Arrow vertical stem with rounded bottom cap
+        drawLine(
+            color = tint,
+            start = Offset(cx, topY),
+            end = Offset(cx, bottomY),
+            strokeWidth = strokeWidth,
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+/**
+ * Audio waveform icon for the separate circular Live / Voice button
+ * as shown in Screenshot_20260911-214032.png
+ */
+@Composable
+fun GeminiLiveWaveformBars(
+    modifier: Modifier = Modifier,
+    tint: Color = Color.White
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(3.5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(13.dp)
+                .background(tint, CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(21.dp)
+                .background(tint, CircleShape)
+        )
+        Box(
+            modifier = Modifier
+                .width(3.dp)
+                .height(7.dp)
+                .background(tint, CircleShape)
+        )
+    }
+}
+
+/**
+ * Modern AI Coach Text Bar & Dynamic Animated Scalloped Send Button
+ * matching Screenshot_20260911-214032.png and Screenshot_20260911-215715.png
+ */
+@Composable
+fun AICoachInputBar(
+    userText: String,
+    onUserTextChange: (String) -> Unit,
+    onSend: () -> Unit,
+    onAttachClick: () -> Unit,
+    onVoiceClick: () -> Unit,
+    hasAttachment: Boolean = false,
+    chatLoading: Boolean = false,
+    appLanguage: String,
+    isDark: Boolean,
+    isFrostedGlassEnabled: Boolean,
+    containerColor: Color,
+    pixelBrush: Brush,
+    placeholderText: String = if (appLanguage == "el") "Ρωτήστε το ..." else "Ask Nero...",
+    modifier: Modifier = Modifier,
+    onClearText: () -> Unit = { onUserTextChange("") }
+) {
+    // Dynamic typing detection: user actively typing vs paused/stopped
+    var lastTypedTime by remember { mutableLongStateOf(0L) }
+    var isWriting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(lastTypedTime) {
+        if (lastTypedTime > 0L) {
+            isWriting = true
+            delay(300) // Transitions to rotating animation after 300ms of user not typing
+            isWriting = false
+        }
+    }
+
+    // Smoothly ease writing weight between 0f (idle) and 1f (typing)
+    val writingWeight by animateFloatAsState(
+        targetValue = if (isWriting) 1f else 0f,
+        animationSpec = tween(durationMillis = 400, easing = FastOutSlowInEasing),
+        label = "writing_weight"
+    )
+
+    // Continuous, buttery-smooth physical angle accumulation:
+    // - When typing: very slow, smooth sinusoidal rocking back and forth (~2.4s oscillation period)
+    // - When idle / inactive: continuous slow counter-clockwise rotation (-8 deg/s)
+    // - Transitions seamlessly with zero jumps or pops after 300ms of user not typing
+    var rotationAngle by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(Unit) {
+        var lastNanos = 0L
+        var oscillationPhase = 0f
+        val oscillationFreq = 2f * Math.PI.toFloat() / 2.4f // 2.4s period (very slow, smooth back-and-forth)
+        val maxWobbleSpeed = 26f // deg/s
+        val idleRotSpeed = -8f // deg/s (simple continuous slow CCW rotation)
+
+        while (isActive) {
+            withFrameNanos { nowNanos ->
+                if (lastNanos != 0L) {
+                    val dt = ((nowNanos - lastNanos) / 1_000_000_000f).coerceIn(0f, 0.05f)
+                    oscillationPhase += dt * oscillationFreq
+
+                    // Smooth sinusoidal wobble velocity
+                    val wobbleSpeed = kotlin.math.cos(oscillationPhase) * maxWobbleSpeed
+
+                    // Smoothly blend velocity between typing wobble and idle rotation
+                    val effectiveSpeed = writingWeight * wobbleSpeed + (1f - writingWeight) * idleRotSpeed
+
+                    rotationAngle = (rotationAngle + effectiveSpeed * dt) % 360f
+                }
+                lastNanos = nowNanos
+            }
+        }
+    }
+
+    val isSendVisible = (userText.trim().isNotEmpty() || hasAttachment) && !chatLoading
+
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // Pill Text Bar (thicker, fully opaque unless glass theme is enabled)
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 60.dp)
+                .background(
+                    color = if (isFrostedGlassEnabled) containerColor else if (isDark) Color(0xFF1E1F24) else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = CircleShape
+                )
+                .then(
+                    if (isFrostedGlassEnabled) {
+                        Modifier.border(
+                            width = 1.dp,
+                            brush = GlassTheme.getCardBorderBrush(isDark),
+                            shape = CircleShape
+                        )
+                    } else {
+                        Modifier.border(
+                            width = 1.dp,
+                            color = if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            shape = CircleShape
+                        )
+                    }
+                )
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left '+' button
+            IconButton(
+                onClick = onAttachClick,
+                modifier = Modifier.size(44.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Rounded.Add,
+                        contentDescription = if (appLanguage == "el") "Επισύναψη" else "Attach",
+                        tint = if (hasAttachment) MaterialTheme.colorScheme.primary else (if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant),
+                        modifier = Modifier.size(24.dp)
+                    )
+                    if (hasAttachment) {
+                        Box(
+                            modifier = Modifier
+                                .size(7.dp)
+                                .align(Alignment.TopEnd)
+                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+
+            // Central text input
+            androidx.compose.foundation.text.BasicTextField(
+                value = userText,
+                onValueChange = { newText ->
+                    if (newText != userText) {
+                        onUserTextChange(newText)
+                        lastTypedTime = System.currentTimeMillis()
+                        isWriting = true
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(vertical = 10.dp)
+                    .testTag("gemini_chat_input"),
+                textStyle = androidx.compose.ui.text.TextStyle(
+                    color = if (isDark) Color.White else Color.Black,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Normal
+                ),
+                keyboardOptions = KeyboardOptions(
+                    imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                ),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                    onSend = {
+                        if (isSendVisible) {
+                            onSend()
+                        }
+                    }
+                ),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else MaterialTheme.colorScheme.primary),
+                decorationBox = { innerTextField ->
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (userText.isEmpty()) {
+                            Text(
+                                text = placeholderText,
+                                color = if (isDark) Color(0xFF8E9199) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1
+                            )
+                        }
+                        innerTextField()
+                    }
+                }
+            )
+
+            // Clear text button 'X' when text is present
+            if (userText.isNotEmpty()) {
+                IconButton(
+                    onClick = onClearText,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Close,
+                        contentDescription = "Clear text",
+                        tint = if (isDark) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        modifier = Modifier.size(17.dp)
+                    )
+                }
+            }
+
+            // Right audio / voice button with waveform bars icon (matching the inactive send button icon)
+            IconButton(
+                onClick = onVoiceClick,
+                modifier = Modifier.size(44.dp)
+            ) {
+                GeminiLiveWaveformBars(
+                    tint = if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
+        // Persistent Send Button with Scalloped Rosette Shape:
+        // - Always fully opaque (100% alpha)
+        // - Just stays there even when inactive
+        // - Continuous slow CCW rotating animation doubles as the inactive animation
+        // - Very slowly and smoothly rocks back and forth while typing
+        // - Smoothly transitions into the rotating animation after 300ms of user not typing
+        // - The Google Pixel-like send arrow remains completely still and upright
+        val sendBgColor = MaterialTheme.colorScheme.secondary
+        val sendContentColor = MaterialTheme.colorScheme.onSecondary
+
+        Box(
+            modifier = Modifier
+                .size(50.dp)
+                .clip(CircleShape)
+                .clickable(enabled = isSendVisible) {
+                    onSend()
+                }
+                .testTag("gemini_send_btn"),
+            contentAlignment = Alignment.Center
+        ) {
+            // Scalloped rosette shape background layer using app secondary color (always fully opaque)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        rotationZ = rotationAngle
+                    }
+                    .clip(ScallopedRosetteShape)
+                    .background(color = sendBgColor)
+            )
+
+            // Google Pixel-like rounded send arrow icon (completely stationary)
+            PixelSendArrowIcon(
+                tint = sendContentColor,
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
 
 fun androidx.compose.foundation.lazy.LazyListScope.renderAICoachSection(
     viewModel: WaterViewModel,
@@ -161,25 +551,12 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAICoachSection(
                     if (isFrostedGlassEnabled) {
                         Modifier
                             .background(
-                                brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                                    colors = listOf(
-                                        MaterialTheme.colorScheme.surface.copy(alpha = frostedGlassTransparency),
-                                        MaterialTheme.colorScheme.surface.copy(alpha = frostedGlassTransparency * 0.45f)
-                                    )
-                                ),
+                                brush = GlassTheme.getCardBackgroundBrush(isDark, frostedGlassTransparency),
                                 shape = RoundedCornerShape(32.dp)
                             )
                             .border(
                                 width = 1.dp,
-                                brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                    colors = listOf(
-                                        Color.White.copy(alpha = 0.25f),
-                                        Color.Transparent,
-                                        Color.Transparent
-                                    ),
-                                    start = androidx.compose.ui.geometry.Offset(0f, 0f),
-                                    end = androidx.compose.ui.geometry.Offset(Float.POSITIVE_INFINITY, Float.POSITIVE_INFINITY)
-                                ),
+                                brush = GlassTheme.getCardBorderBrush(isDark),
                                 shape = RoundedCornerShape(32.dp)
                             )
                     } else Modifier
@@ -287,7 +664,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAICoachSection(
                         .height(320.dp)
                         .background(
                             color = if (isFrostedGlassEnabled) {
-                                MaterialTheme.colorScheme.surface.copy(alpha = frostedGlassTransparency * 0.4f)
+                                GlassTheme.getSubCardColor(isDark, frostedGlassTransparency)
                             } else if (transparentComponentsEnabled) {
                                 MaterialTheme.colorScheme.surface.copy(alpha = componentsTransparency)
                             } else {
@@ -297,7 +674,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAICoachSection(
                         )
                         .border(
                             1.dp,
-                            if (isFrostedGlassEnabled) Color.White.copy(alpha = 0.15f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
+                            if (isFrostedGlassEnabled) GlassTheme.getCardBorderBrush(isDark) else androidx.compose.ui.graphics.SolidColor(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                             RoundedCornerShape(20.dp)
                         )
                         .padding(12.dp)
@@ -545,142 +922,66 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderAICoachSection(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), thickness = 1.dp)
 
-                // Send Message Input Area
+                // Send Message Input Area (matching Screenshot_20260911-214032.png and Screenshot_20260911-215715.png)
                 var userTextState by remember { mutableStateOf("") }
                 
                 val baseCardColor = LocalBaseCardColor.current ?: MaterialTheme.colorScheme.surfaceVariant
                 val dialogBoxColor = if (isFrostedGlassEnabled) {
-                    if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
+                    GlassTheme.getSubCardColor(isDark)
                 } else {
                     baseCardColor
                 }
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Input Bar (Pill shaped)
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .background(
-                                color = dialogBoxColor,
-                                shape = RoundedCornerShape(28.dp)
-                            )
-                            .border(
-                                width = 1.dp,
-                                brush = if (isFrostedGlassEnabled) {
-                                    Brush.linearGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.05f)))
-                                } else {
-                                    Brush.linearGradient(listOf(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)))
-                                },
-                                shape = RoundedCornerShape(28.dp)
-                            )
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        androidx.compose.foundation.text.BasicTextField(
-                            value = userTextState,
-                            onValueChange = { userTextState = it },
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("gemini_chat_input"),
-                            textStyle = androidx.compose.ui.text.TextStyle(
-                                color = if (isDark) Color.White else Color.Black,
-                                fontSize = 15.sp
-                            ),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                            ),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                                onSend = {
-                                    val trimmed = userTextState.trim()
-                                    if (trimmed.isNotEmpty() && !chatLoading) {
-                                        viewModel.sendChatMessage(trimmed)
-                                        userTextState = ""
-                                        viewModel.triggerButtonHaptic()
-                                    }
-                                }
-                            ),
-                            cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else Color.Black),
-                            decorationBox = { innerTextField ->
-                                Box {
-                                    if (userTextState.isEmpty()) {
-                                        Text(
-                                            text = if (appLanguage == "el") "Ρωτήστε τον Nero..." else "Ask Nero AI Coach...",
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                            fontSize = 15.sp,
-                                            maxLines = 1
-                                        )
-                                    }
-                                    innerTextField()
-                                }
-                            }
-                        )
-
-                        if (userTextState.isNotEmpty()) {
-                            IconButton(
-                                onClick = { 
-                                    userTextState = "" 
-                                    viewModel.triggerButtonHaptic()
-                                },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Close,
-                                    contentDescription = "Clear text",
-                                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
+                val context = LocalContext.current
+                val speechVoiceLauncher = rememberLauncherForActivityResult(
+                    contract = ActivityResultContracts.StartActivityForResult()
+                ) { result ->
+                    if (result.resultCode == android.app.Activity.RESULT_OK) {
+                        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                        if (!spoken.isNullOrBlank()) {
+                            userTextState = if (userTextState.isBlank()) spoken else "$userTextState $spoken"
                         }
                     }
+                }
 
-                    // Separate Send Button (Pill shaped with color-shifting Pixel gradient)
-                    val isSendEnabled = userTextState.trim().isNotEmpty() && !chatLoading
-                    
-                    Box(
-                        modifier = Modifier
-                            .height(48.dp)
-                            .width(64.dp)
-                            .clip(RoundedCornerShape(24.dp))
-                            .then(
-                                if (isSendEnabled) {
-                                    Modifier.background(brush = pixelBrush)
-                                } else {
-                                    Modifier
-                                        .background(color = dialogBoxColor)
-                                        .border(
-                                            width = 1.dp,
-                                            brush = if (isFrostedGlassEnabled) {
-                                                Brush.linearGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.05f)))
-                                            } else {
-                                                Brush.linearGradient(listOf(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)))
-                                            },
-                                            shape = RoundedCornerShape(24.dp)
-                                        )
-                                }
-                            )
-                            .clickable(enabled = isSendEnabled) {
-                                val trimmed = userTextState.trim()
-                                if (trimmed.isNotEmpty() && !chatLoading) {
-                                    viewModel.sendChatMessage(trimmed)
-                                    userTextState = ""
-                                    viewModel.triggerButtonHaptic()
-                                }
-                            }
-                            .testTag("gemini_send_btn"),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.Send,
-                            contentDescription = "Send prompt",
-                            tint = if (isSendEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(20.dp)
-                        )
+                val onVoiceTrigger = {
+                    try {
+                        val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                            putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (appLanguage == "el") "el-GR" else "en-US")
+                            putExtra(RecognizerIntent.EXTRA_PROMPT, if (appLanguage == "el") "Ρωτήστε το Nero..." else "Ask Nero...")
+                        }
+                        speechVoiceLauncher.launch(intent)
+                    } catch (e: Exception) {
+                        Toast.makeText(context, if (appLanguage == "el") "Η φωνητική εισαγωγή δεν είναι διαθέσιμη" else "Voice input not available", Toast.LENGTH_SHORT).show()
                     }
                 }
+
+                AICoachInputBar(
+                    userText = userTextState,
+                    onUserTextChange = { userTextState = it },
+                    onSend = {
+                        val trimmed = userTextState.trim()
+                        if (trimmed.isNotEmpty() && !chatLoading) {
+                            viewModel.sendChatMessage(trimmed)
+                            userTextState = ""
+                            viewModel.triggerButtonHaptic()
+                        }
+                    },
+                    onAttachClick = {
+                        viewModel.triggerButtonHaptic()
+                    },
+                    onVoiceClick = onVoiceTrigger,
+                    hasAttachment = false,
+                    chatLoading = chatLoading,
+                    appLanguage = appLanguage,
+                    isDark = isDark,
+                    isFrostedGlassEnabled = isFrostedGlassEnabled,
+                    containerColor = dialogBoxColor,
+                    pixelBrush = pixelBrush,
+                    placeholderText = if (appLanguage == "el") "Ρωτήστε το ..." else "Ask Nero...",
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
         }
     }
@@ -789,7 +1090,9 @@ fun AskGeminiScreen(
     chatError: String?,
     isDark: Boolean,
     isOledActive: Boolean,
-    appLanguage: String
+    appLanguage: String,
+    isNavBarVisible: Boolean = true,
+    onNavBarVisibilityChange: ((Boolean) -> Unit)? = null
 ) {
     val emptyScrollState = rememberScrollState()
     val activeScrollState = rememberScrollState()
@@ -799,6 +1102,37 @@ fun AskGeminiScreen(
     val selectedImageUri by viewModel.selectedImageUri.collectAsStateWithLifecycle()
     val isFrostedGlassEnabled = LocalFrostedGlassEnabled.current
     val frostedTransparency = LocalFrostedGlassTransparency.current
+
+    val coachNestedScroll = remember(onNavBarVisibilityChange) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(
+                available: androidx.compose.ui.geometry.Offset,
+                source: NestedScrollSource
+            ): androidx.compose.ui.geometry.Offset {
+                val delta = available.y
+                if (delta < -8f) {
+                    onNavBarVisibilityChange?.invoke(false)
+                } else if (delta > 8f) {
+                    onNavBarVisibilityChange?.invoke(true)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: androidx.compose.ui.geometry.Offset,
+                available: androidx.compose.ui.geometry.Offset,
+                source: NestedScrollSource
+            ): androidx.compose.ui.geometry.Offset {
+                val delta = available.y
+                if (delta < -8f) {
+                    onNavBarVisibilityChange?.invoke(false)
+                } else if (delta > 8f) {
+                    onNavBarVisibilityChange?.invoke(true)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+        }
+    }
 
     // Photo picker launcher
     val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
@@ -831,9 +1165,35 @@ fun AskGeminiScreen(
         }
     }
 
+    val imeBottom = androidx.compose.foundation.layout.WindowInsets.ime.asPaddingValues().calculateBottomPadding()
+    LaunchedEffect(imeBottom > 20.dp) {
+        if (hasChats && imeBottom > 20.dp) {
+            kotlinx.coroutines.delay(100)
+            activeScrollState.animateScrollTo(
+                value = activeScrollState.maxValue,
+                animationSpec = androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow
+                )
+            )
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
+            .nestedScroll(coachNestedScroll)
+            .scrollable(
+                state = rememberScrollableState { delta ->
+                    if (delta < -8f) {
+                        onNavBarVisibilityChange?.invoke(false)
+                    } else if (delta > 8f) {
+                        onNavBarVisibilityChange?.invoke(true)
+                    }
+                    delta
+                },
+                orientation = Orientation.Vertical
+            )
     ) {
         // (Glow removed per request)
 
@@ -894,9 +1254,9 @@ fun AskGeminiScreen(
 
                             val bubbleColor = if (isFrostedGlassEnabled) {
                                 if (isUser) {
-                                    (if (isDark) Color(0xFF1E3A5F) else MaterialTheme.colorScheme.primaryContainer).copy(alpha = frostedTransparency)
+                                    (if (isDark) Color(0xFF1E3A5F) else MaterialTheme.colorScheme.primaryContainer).copy(alpha = (0.80f + (1f - frostedTransparency) * 0.15f).coerceIn(0.70f, 0.95f))
                                 } else {
-                                    (if (isDark) Color(0xFF1F2023) else MaterialTheme.colorScheme.surfaceVariant).copy(alpha = frostedTransparency)
+                                    (if (isDark) MaterialTheme.colorScheme.surfaceVariant else Color.White).copy(alpha = (0.80f + (1f - frostedTransparency) * 0.15f).coerceIn(0.70f, 0.95f))
                                 }
                             } else {
                                 if (isUser) {
@@ -940,9 +1300,7 @@ fun AskGeminiScreen(
                                             if (isFrostedGlassEnabled) {
                                                 Modifier.border(
                                                     width = 1.dp,
-                                                    brush = androidx.compose.ui.graphics.Brush.linearGradient(
-                                                        colors = listOf(Color.White.copy(alpha = 0.35f), Color.Transparent)
-                                                    ),
+                                                    brush = GlassTheme.getCardBorderBrush(isDark),
                                                     shape = bubbleShape
                                                 )
                                             } else {
@@ -1186,7 +1544,7 @@ fun AskGeminiScreen(
             val isFrostedGlassEnabled = LocalFrostedGlassEnabled.current
             val baseCardColor = LocalBaseCardColor.current ?: MaterialTheme.colorScheme.surfaceVariant
             val boxColor = if (isFrostedGlassEnabled) {
-                if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
+                GlassTheme.getSubCardColor(isDark)
             } else {
                 baseCardColor
             }
@@ -1218,162 +1576,62 @@ fun AskGeminiScreen(
 
             var userTextState by remember { mutableStateOf("") }
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                // Input Bar (Pill shaped)
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .background(
-                            color = boxColor,
-                            shape = RoundedCornerShape(28.dp)
-                        )
-                        .then(
-                            if (!isDark) {
-                                Modifier.border(
-                                    width = 1.dp,
-                                    brush = if (isFrostedGlassEnabled) {
-                                        Brush.linearGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.05f)))
-                                    } else {
-                                        Brush.linearGradient(listOf(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)))
-                                    },
-                                    shape = RoundedCornerShape(28.dp)
-                                )
-                            } else Modifier
-                        )
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    IconButton(
-                        onClick = {
-                            photoPickerLauncher.launch(
-                                androidx.activity.result.PickVisualMediaRequest(
-                                    androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
-                                )
-                            )
-                        },
-                        modifier = Modifier.size(28.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Rounded.Image,
-                            contentDescription = "Attach image",
-                            tint = if (selectedImageUri != null) {
-                                MaterialTheme.colorScheme.primary
-                            } else {
-                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                            },
-                            modifier = Modifier.size(20.dp)
-                        )
+            val speechVoiceLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.StartActivityForResult()
+            ) { result ->
+                if (result.resultCode == android.app.Activity.RESULT_OK) {
+                    val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+                    if (!spoken.isNullOrBlank()) {
+                        userTextState = if (userTextState.isBlank()) spoken else "$userTextState $spoken"
                     }
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    androidx.compose.foundation.text.BasicTextField(
-                        value = userTextState,
-                        onValueChange = { userTextState = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("gemini_chat_input"),
-                        textStyle = androidx.compose.ui.text.TextStyle(
-                            color = if (isDark) Color.White else Color.Black,
-                            fontSize = 15.sp
-                        ),
-                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                            imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                        ),
-                        keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                            onSend = {
-                                val trimmed = userTextState.trim()
-                                if ((trimmed.isNotEmpty() || selectedImageUri != null) && !chatLoading) {
-                                    viewModel.sendChatMessage(trimmed)
-                                    userTextState = ""
-                                    viewModel.triggerButtonHaptic()
-                                }
-                            }
-                        ),
-                        cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else Color.Black),
-                        decorationBox = { innerTextField ->
-                            Box {
-                                if (userTextState.isEmpty()) {
-                                    Text(
-                                        text = if (appLanguage == "el") "Ρωτήστε κάτι άλλο..." else "Ask something else...",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                        fontSize = 15.sp,
-                                        maxLines = 1
-                                    )
-                                }
-                                innerTextField()
-                            }
-                        }
-                    )
-
-                    if (userTextState.isNotEmpty()) {
-                        IconButton(
-                            onClick = { 
-                                userTextState = "" 
-                                viewModel.triggerButtonHaptic()
-                            },
-                            modifier = Modifier.size(24.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Rounded.Close,
-                                contentDescription = "Clear text",
-                                tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Separate Send Button (Pill shaped with color-shifting Pixel gradient)
-                val isSendEnabled = (userTextState.trim().isNotEmpty() || selectedImageUri != null) && !chatLoading
-                
-                Box(
-                    modifier = Modifier
-                        .height(48.dp)
-                        .width(64.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                        .then(
-                            if (isSendEnabled) {
-                                Modifier.background(brush = pixelBrush)
-                            } else {
-                                Modifier
-                                    .background(color = boxColor)
-                                    .border(
-                                        width = 1.dp,
-                                        brush = if (isFrostedGlassEnabled) {
-                                            Brush.linearGradient(listOf(Color.White.copy(alpha = 0.15f), Color.White.copy(alpha = 0.05f)))
-                                        } else {
-                                            Brush.linearGradient(listOf(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f), MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)))
-                                        },
-                                        shape = RoundedCornerShape(24.dp)
-                                    )
-                            }
-                        )
-                        .clickable(enabled = isSendEnabled) {
-                            val trimmed = userTextState.trim()
-                            if ((trimmed.isNotEmpty() || selectedImageUri != null) && !chatLoading) {
-                                viewModel.sendChatMessage(trimmed)
-                                userTextState = ""
-                                viewModel.triggerButtonHaptic()
-                            }
-                        }
-                        .testTag("gemini_send_btn"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.Send,
-                        contentDescription = if (appLanguage == "el") "Αποστολή μηνύματος" else "Send message",
-                        tint = if (isSendEnabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                        modifier = Modifier.size(20.dp)
-                    )
                 }
             }
+
+            val onVoiceTrigger = {
+                try {
+                    val intent = android.content.Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                        putExtra(RecognizerIntent.EXTRA_LANGUAGE, if (appLanguage == "el") "el-GR" else "en-US")
+                        putExtra(RecognizerIntent.EXTRA_PROMPT, if (appLanguage == "el") "Ρωτήστε το Nero..." else "Ask Nero...")
+                    }
+                    speechVoiceLauncher.launch(intent)
+                } catch (e: Exception) {
+                    Toast.makeText(context, if (appLanguage == "el") "Η φωνητική εισαγωγή δεν είναι διαθέσιμη" else "Voice input not available", Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            AICoachInputBar(
+                userText = userTextState,
+                onUserTextChange = { userTextState = it },
+                onSend = {
+                    val trimmed = userTextState.trim()
+                    if ((trimmed.isNotEmpty() || selectedImageUri != null) && !chatLoading) {
+                        viewModel.sendChatMessage(trimmed)
+                        userTextState = ""
+                        viewModel.triggerButtonHaptic()
+                    }
+                },
+                onAttachClick = {
+                    photoPickerLauncher.launch(
+                        androidx.activity.result.PickVisualMediaRequest(
+                            androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia.ImageOnly
+                        )
+                    )
+                    viewModel.triggerButtonHaptic()
+                },
+                onVoiceClick = onVoiceTrigger,
+                hasAttachment = selectedImageUri != null,
+                chatLoading = chatLoading,
+                appLanguage = appLanguage,
+                isDark = isDark,
+                isFrostedGlassEnabled = isFrostedGlassEnabled,
+                containerColor = boxColor,
+                pixelBrush = pixelBrush,
+                placeholderText = if (appLanguage == "el") "Ρωτήστε το ..." else "Ask Nero...",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            )
         }
     }
 }
@@ -1417,22 +1675,13 @@ fun SuggestedTopicCard(
         end = androidx.compose.ui.geometry.Offset(animatedOffset + 400f, 400f)
     )
     
-    val cornerRadius by animateDpAsState(
-        targetValue = if (isActive) 100.dp else 24.dp,
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow
-        ),
-        label = "suggested_radius"
-    )
-    
     val baseCardColor = LocalBaseCardColor.current ?: MaterialTheme.colorScheme.surfaceVariant
     val containerColor by animateColorAsState(
         targetValue = if (isActive) {
             MaterialTheme.colorScheme.primary
         } else {
             if (isFrostedGlassEnabled) {
-                if (isDark) Color.White.copy(alpha = 0.08f) else Color.Black.copy(alpha = 0.05f)
+                GlassTheme.getSubCardColor(isDark)
             } else {
                 baseCardColor
             }
@@ -1442,24 +1691,46 @@ fun SuggestedTopicCard(
     )
     
     val contentColor by animateColorAsState(
-        targetValue = if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary,
+        targetValue = if (isActive) {
+            if (isDark) Color.Black else MaterialTheme.colorScheme.onPrimary
+        } else {
+            if (isFrostedGlassEnabled) {
+                if (isDark) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.onSurface
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
+        },
         animationSpec = tween(250),
         label = "suggested_content_color"
     )
 
     Box(
         modifier = Modifier
-            .width(125.dp)
-            .height(60.dp)
+            .height(36.dp)
             .scale(scaleAnim.value)
-            .clip(RoundedCornerShape(maxOf(0f, cornerRadius.value).dp))
-            .background(color = MaterialTheme.colorScheme.primary)
+            .clip(CircleShape)
+            .background(color = containerColor)
+            .then(
+                if (isFrostedGlassEnabled) {
+                    Modifier.border(
+                        width = 1.dp,
+                        brush = GlassTheme.getCardBorderBrush(isDark),
+                        shape = CircleShape
+                    )
+                } else {
+                    Modifier.border(
+                        width = 1.dp,
+                        color = if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                        shape = CircleShape
+                    )
+                }
+            )
             .clickable {
                 onClick()
                 isActive = true
                 scope.launch {
-                    scaleAnim.animateTo(0.85f, animationSpec = tween(50))
-                    scaleAnim.animateTo(1.08f, animationSpec = spring(dampingRatio = 0.45f, stiffness = 300f))
+                    scaleAnim.animateTo(0.88f, animationSpec = tween(50))
+                    scaleAnim.animateTo(1.05f, animationSpec = spring(dampingRatio = 0.45f, stiffness = 300f))
                     scaleAnim.animateTo(1.0f, animationSpec = spring())
                 }
                 resetJob?.cancel()
@@ -1468,27 +1739,26 @@ fun SuggestedTopicCard(
                     isActive = false
                 }
             }
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 13.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
                 tint = contentColor,
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(15.dp)
             )
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Text(
                 text = title,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
                 color = contentColor,
-                textAlign = TextAlign.Center,
-                lineHeight = 13.sp
+                maxLines = 1
             )
         }
     }

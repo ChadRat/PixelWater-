@@ -158,16 +158,8 @@ tasks.register<Copy>("copyWearApkToAssets") {
 tasks.register<Copy>("copyApkToVisibleFolder") {
   outputs.upToDateWhen { false }
   from(layout.buildDirectory.dir("outputs/apk/debug"))
-  into(rootProject.file("0_build-outputs"))
+  into(rootProject.file("build-outputs"))
   include("app-debug.apk")
-
-  doLast {
-    copy {
-      from(layout.buildDirectory.dir("outputs/apk/debug"))
-      into(rootProject.file(".build-outputs"))
-      include("app-debug.apk")
-    }
-  }
 }
 
 tasks.named("preBuild") {

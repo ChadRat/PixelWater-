@@ -136,19 +136,19 @@ fun SegmentedThemeMode(
                 val targetBgColor = if (isSelected) {
                     MaterialTheme.colorScheme.primary
                 } else {
-                    if (isFrostedGlass) Color.White.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.25f else 0.18f)
+                    if (isFrostedGlass) GlassTheme.getSubCardColor(isDark) else MaterialTheme.colorScheme.primary.copy(alpha = if (isDark) 0.25f else 0.18f)
                 }
 
                 val targetContentColor = if (isSelected) {
                     MaterialTheme.colorScheme.onPrimary
                 } else {
-                    if (isFrostedGlass) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primary
+                    if (isFrostedGlass) (if (isDark) Color.White.copy(alpha = 0.95f) else MaterialTheme.colorScheme.onSurface) else MaterialTheme.colorScheme.primary
                 }
 
                 val targetBorderColor = if (isSelected) {
-                    if (isFrostedGlass) Color.White.copy(alpha = 0.45f) else if (!isDark) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color.Transparent
+                    if (isFrostedGlass) Color.White.copy(alpha = 0.55f) else if (!isDark) MaterialTheme.colorScheme.primary.copy(alpha = 0.6f) else Color.Transparent
                 } else {
-                    if (isFrostedGlass) Color.White.copy(alpha = 0.15f) else Color.Transparent
+                    if (isFrostedGlass) Color.White.copy(alpha = if (isDark) 0.18f else 0.40f) else Color.Transparent
                 }
 
                 val animatedBgColor by animateColorAsState(

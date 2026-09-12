@@ -146,11 +146,11 @@ fun cleanMetaCommentsAndBulletLabels(text: String): String {
 
 @Composable
 fun CircularSquigglyProgressIndicator(
-    modifier: Modifier = Modifier.size(24.dp),
+    modifier: Modifier = Modifier.size(28.dp),
     color: Color = MaterialTheme.colorScheme.primary,
-    strokeWidth: Dp = 2.dp,
+    strokeWidth: Dp = 3.dp,
     numLobes: Int = 8,
-    squigglyAmplitude: Float = 0.12f
+    squigglyAmplitude: Float = 0.20f
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "squiggly_spin")
     val rotation by infiniteTransition.animateFloat(
