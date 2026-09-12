@@ -4360,29 +4360,96 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                     // Chronological Logs of Current Day
                     if (todayLogs.isEmpty()) {
                         item {
-                            Column(
+                            val isFrostedGlass = LocalFrostedGlassEnabled.current
+                            val currentAppTheme = viewModel.appTheme.collectAsStateWithLifecycle().value
+                            val isLglassTheme = isFrostedGlass || currentAppTheme.equals("GLASS", ignoreCase = true) || currentAppTheme.contains("GLASS", ignoreCase = true)
+                            val shapeColor = if (isLglassTheme) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant
+                            val sixLobedShape = remember { SixLobedCardShape(amplitude = 0.14f) }
+
+                            // Smooth very slow continuous rotation: full turn clockwise (0 -> 360), then one anticlockwise (360 -> 0)
+                            val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "EmptyStateShapeRotation")
+                            val shapeRotationAngle by infiniteTransition.animateFloat(
+                                initialValue = 0f,
+                                targetValue = 360f,
+                                animationSpec = androidx.compose.animation.core.infiniteRepeatable(
+                                    animation = androidx.compose.animation.core.tween(
+                                        durationMillis = 22000,
+                                        easing = androidx.compose.animation.core.CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
+                                    ),
+                                    repeatMode = androidx.compose.animation.core.RepeatMode.Reverse
+                                ),
+                                label = "ShapeRotationAngle"
+                            )
+
+                            Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 32.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
+                                    .padding(vertical = 20.dp),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = Icons.Rounded.Info,
-                                    contentDescription = "Empty Glass Icon",
-                                    tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                                    modifier = Modifier.size(56.dp)
+                                // Rotating 6-lobed shape background with 1dp outline
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.85f)
+                                        .aspectRatio(1.0f)
+                                        .graphicsLayer {
+                                            rotationZ = shapeRotationAngle
+                                        }
+                                        .clip(sixLobedShape)
+                                        .background(shapeColor, sixLobedShape)
+                                        .then(
+                                            if (isLglassTheme) {
+                                                Modifier.border(1.dp, GlassTheme.getCardBorderBrush(isDark), sixLobedShape)
+                                            } else if (!isDark) {
+                                                Modifier.border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), sixLobedShape)
+                                            } else {
+                                                Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), sixLobedShape)
+                                            }
+                                        )
                                 )
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text(
-                                    text = if (appLanguage == "el") "Δεν έχει καταγραφεί νερό για αυτήν την ημέρα." else "No water logged for this date.",
-                                    fontSize = 14.sp,
-                                    color = MaterialTheme.colorScheme.outline
-                                )
-                                Text(
-                                    text = if (appLanguage == "el") "Πατήστε ένα κουμπί παραπάνω για καταγραφή!" else "Tap a button above to start tracking!",
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
-                                )
+
+                                // Foreground readable content centered within the 6-lobed shape
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center,
+                                    modifier = Modifier
+                                        .fillMaxWidth(0.72f)
+                                        .padding(horizontal = 20.dp, vertical = 20.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Rounded.Info,
+                                        contentDescription = "Empty Glass Icon",
+                                        tint = if (isLglassTheme) {
+                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                                        } else {
+                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
+                                        },
+                                        modifier = Modifier.size(44.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = if (appLanguage == "el") "Δεν έχει καταγραφεί νερό για αυτήν την ημέρα." else "No water logged for this date.",
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        textAlign = TextAlign.Center,
+                                        color = if (isLglassTheme) {
+                                            if (isDark) Color.White.copy(alpha = 0.9f) else MaterialTheme.colorScheme.outline
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant
+                                        }
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = if (appLanguage == "el") "Πατήστε ένα κουμπί παραπάνω για καταγραφή!" else "Tap a button above to start tracking!",
+                                        fontSize = 12.sp,
+                                        textAlign = TextAlign.Center,
+                                        color = if (isLglassTheme) {
+                                            if (isDark) Color.White.copy(alpha = 0.65f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.7f)
+                                        } else {
+                                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                                        }
+                                    )
+                                }
                             }
                         }
                     } else {
@@ -7582,9 +7649,9 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                 val dynamicVersionName = remember(context) {
                                     try {
                                         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                                        packageInfo.versionName ?: "1.4.1"
+                                        packageInfo.versionName ?: "1.4.2"
                                     } catch (e: Exception) {
-                                        "1.4.1"
+                                        "1.4.2"
                                     }
                                 }
                                 Text(
@@ -15663,6 +15730,101 @@ fun Modifier.appBorder(
     }
 }
 
+class FourLobedCardShape(
+    val amplitude: Float = 0.26f
+) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density
+    ): androidx.compose.ui.graphics.Outline {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val maxRCos = 0.9846f
+        val insetPx = with(density) { 1.5.dp.toPx() }
+        val effectiveW = (w - insetPx * 2).coerceAtLeast(1f)
+        val effectiveH = (h - insetPx * 2).coerceAtLeast(1f)
+        val sx = (effectiveW / 2f) / maxRCos
+        val sy = (effectiveH / 2f) / maxRCos
+
+        val path = androidx.compose.ui.graphics.Path().apply {
+            val pointsCount = 180
+            for (i in 0 until pointsCount) {
+                val angleRad = (i * 2.0 * Math.PI / pointsCount).toFloat()
+                val r = 1f - amplitude * kotlin.math.cos(4f * angleRad)
+                val x = cx + sx * r * kotlin.math.cos(angleRad)
+                val y = cy + sy * r * kotlin.math.sin(angleRad)
+                if (i == 0) {
+                    moveTo(x, y)
+                } else {
+                    lineTo(x, y)
+                }
+            }
+            close()
+        }
+        return androidx.compose.ui.graphics.Outline.Generic(path)
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is FourLobedCardShape) return false
+        return amplitude == other.amplitude
+    }
+
+    override fun hashCode(): Int {
+        return amplitude.hashCode()
+    }
+}
+
+class SixLobedCardShape(
+    val amplitude: Float = 0.14f
+) : androidx.compose.ui.graphics.Shape {
+    override fun createOutline(
+        size: androidx.compose.ui.geometry.Size,
+        layoutDirection: androidx.compose.ui.unit.LayoutDirection,
+        density: androidx.compose.ui.unit.Density
+    ): androidx.compose.ui.graphics.Outline {
+        val w = size.width
+        val h = size.height
+        val cx = w / 2f
+        val cy = h / 2f
+        val insetPx = with(density) { 1.dp.toPx() }
+        val maxR = (minOf(w, h) / 2f) - insetPx
+        val baseRadius = maxR / (1f + amplitude)
+
+        val path = androidx.compose.ui.graphics.Path().apply {
+            val pointsCount = 240
+            for (i in 0 until pointsCount) {
+                val angleRad = (i * 2.0 * Math.PI / pointsCount).toFloat()
+                // 6 lobes: peaks at 30, 90 (top), 150, 210, 270 (bottom), 330 deg; valleys at 0 (east), 180 (west)
+                val wave = -kotlin.math.cos(6f * angleRad)
+                val r = baseRadius * (1f + amplitude * wave)
+                val x = cx + r * kotlin.math.cos(angleRad)
+                val y = cy + r * kotlin.math.sin(angleRad)
+                if (i == 0) {
+                    moveTo(x, y)
+                } else {
+                    lineTo(x, y)
+                }
+            }
+            close()
+        }
+        return androidx.compose.ui.graphics.Outline.Generic(path)
+    }
+
+    override fun equals(other: Any?): Boolean {
+        if (this === other) return true
+        if (other !is SixLobedCardShape) return false
+        return amplitude == other.amplitude
+    }
+
+    override fun hashCode(): Int {
+        return amplitude.hashCode()
+    }
+}
+
 object GlassTheme {
     @Composable
     fun getCardBackgroundBrush(
@@ -20958,23 +21120,29 @@ fun MaterialShapesBackground(
     if (LocalAppTheme.current == "NONE") return
 
     val safeSpeed = (speed * 0.6f).coerceIn(0.01f, 0.6f)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("pixelwater_prefs", android.content.Context.MODE_PRIVATE) }
+    val indSpeedA = prefs.getFloat("gimmick_ind_speed_a", 0.5f)
+    val indSpeedB = prefs.getFloat("gimmick_ind_speed_b", 0.5f)
+    val indSpeedC = prefs.getFloat("gimmick_ind_speed_c", 0.5f)
+    val indSpeedD = prefs.getFloat("gimmick_ind_speed_d", 0.5f)
     
     var offsetA by remember { mutableStateOf(0f) }
     var offsetB by remember { mutableStateOf(45f) }
     var offsetC by remember { mutableStateOf(90f) }
     var offsetD by remember { mutableStateOf(120f) }
 
-    LaunchedEffect(rotationEnabled, safeSpeed, rotMultA, rotMultB, rotMultC, rotMultD) {
+    LaunchedEffect(rotationEnabled, safeSpeed, rotMultA, rotMultB, rotMultC, rotMultD, indSpeedA, indSpeedB, indSpeedC, indSpeedD) {
         if (rotationEnabled) {
             var lastTime = withFrameNanos { it }
             while (true) {
                 val now = withFrameNanos { it }
                 val deltaSec = (now - lastTime) / 1_000_000_000f
                 if (deltaSec > 0f) {
-                    offsetA = ((offsetA + 9.0f * safeSpeed * rotMultA * deltaSec) % 360f + 360f) % 360f
-                    offsetB = ((offsetB + 9.0f * safeSpeed * rotMultB * deltaSec) % 360f + 360f) % 360f
-                    offsetC = ((offsetC + 9.0f * safeSpeed * rotMultC * deltaSec) % 360f + 360f) % 360f
-                    offsetD = ((offsetD + 9.0f * safeSpeed * rotMultD * deltaSec) % 360f + 360f) % 360f
+                    offsetA = ((offsetA + 9.0f * safeSpeed * indSpeedA * rotMultA * deltaSec) % 360f + 360f) % 360f
+                    offsetB = ((offsetB + 9.0f * safeSpeed * indSpeedB * rotMultB * deltaSec) % 360f + 360f) % 360f
+                    offsetC = ((offsetC + 9.0f * safeSpeed * indSpeedC * rotMultC * deltaSec) % 360f + 360f) % 360f
+                    offsetD = ((offsetD + 9.0f * safeSpeed * indSpeedD * rotMultD * deltaSec) % 360f + 360f) % 360f
                 }
                 lastTime = now
             }
@@ -21254,6 +21422,12 @@ fun AuraGlowBackground(
     modifier: Modifier = Modifier
 ) {
     val safeSpeed = (speed * 0.6f).coerceIn(0.01f, 0.6f)
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember(context) { context.getSharedPreferences("pixelwater_prefs", android.content.Context.MODE_PRIVATE) }
+    val indSpeedA = prefs.getFloat("gimmick_ind_speed_a", 0.5f)
+    val indSpeedB = prefs.getFloat("gimmick_ind_speed_b", 0.5f)
+    val indSpeedC = prefs.getFloat("gimmick_ind_speed_c", 0.5f)
+    val indSpeedD = prefs.getFloat("gimmick_ind_speed_d", 0.5f)
     
     // Slight moving/hovering animation over time
     var phaseA by remember { mutableStateOf(0f) }
@@ -21261,17 +21435,17 @@ fun AuraGlowBackground(
     var phaseC by remember { mutableStateOf(90f) }
     var phaseD by remember { mutableStateOf(120f) }
 
-    LaunchedEffect(rotationEnabled, safeSpeed, rotMultA, rotMultB, rotMultC, rotMultD) {
+    LaunchedEffect(rotationEnabled, safeSpeed, rotMultA, rotMultB, rotMultC, rotMultD, indSpeedA, indSpeedB, indSpeedC, indSpeedD) {
         if (rotationEnabled) {
             var lastTime = withFrameNanos { it }
             while (true) {
                 val now = withFrameNanos { it }
                 val deltaSec = (now - lastTime) / 1_000_000_000f
                 if (deltaSec > 0f) {
-                    phaseA = (phaseA + 0.15f * safeSpeed * rotMultA * deltaSec) % (2f * Math.PI.toFloat())
-                    phaseB = (phaseB + 0.15f * safeSpeed * rotMultB * deltaSec) % (2f * Math.PI.toFloat())
-                    phaseC = (phaseC + 0.15f * safeSpeed * rotMultC * deltaSec) % (2f * Math.PI.toFloat())
-                    phaseD = (phaseD + 0.15f * safeSpeed * rotMultD * deltaSec) % (2f * Math.PI.toFloat())
+                    phaseA = (phaseA + 0.15f * safeSpeed * indSpeedA * rotMultA * deltaSec) % (2f * Math.PI.toFloat())
+                    phaseB = (phaseB + 0.15f * safeSpeed * indSpeedB * rotMultB * deltaSec) % (2f * Math.PI.toFloat())
+                    phaseC = (phaseC + 0.15f * safeSpeed * indSpeedC * rotMultC * deltaSec) % (2f * Math.PI.toFloat())
+                    phaseD = (phaseD + 0.15f * safeSpeed * indSpeedD * rotMultD * deltaSec) % (2f * Math.PI.toFloat())
                 }
                 lastTime = now
             }
@@ -22119,17 +22293,24 @@ fun InteractiveSpinCanvasCard(
             var localOffsetC by remember { mutableStateOf(90f) }
             var localOffsetD by remember { mutableStateOf(120f) }
 
-            LaunchedEffect(rotMultA, rotMultB, rotMultC, rotMultD, currentSpeed) {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            val prefs = remember(context) { context.getSharedPreferences("pixelwater_prefs", android.content.Context.MODE_PRIVATE) }
+            val indSpeedA = prefs.getFloat("gimmick_ind_speed_a", 0.5f)
+            val indSpeedB = prefs.getFloat("gimmick_ind_speed_b", 0.5f)
+            val indSpeedC = prefs.getFloat("gimmick_ind_speed_c", 0.5f)
+            val indSpeedD = prefs.getFloat("gimmick_ind_speed_d", 0.5f)
+
+            LaunchedEffect(rotMultA, rotMultB, rotMultC, rotMultD, currentSpeed, indSpeedA, indSpeedB, indSpeedC, indSpeedD) {
                 val effectiveSpeed = (currentSpeed * 0.6f).coerceIn(0.01f, 0.6f)
                 var lastTime = withFrameNanos { it }
                 while (true) {
                     val now = withFrameNanos { it }
                     val deltaSec = (now - lastTime) / 1_000_000_000f
                     if (deltaSec > 0f) {
-                        localOffsetA = ((localOffsetA + 9.0f * effectiveSpeed * rotMultA * deltaSec) % 360f + 360f) % 360f
-                        localOffsetB = ((localOffsetB + 9.0f * effectiveSpeed * rotMultB * deltaSec) % 360f + 360f) % 360f
-                        localOffsetC = ((localOffsetC + 9.0f * effectiveSpeed * rotMultC * deltaSec) % 360f + 360f) % 360f
-                        localOffsetD = ((localOffsetD + 9.0f * effectiveSpeed * rotMultD * deltaSec) % 360f + 360f) % 360f
+                        localOffsetA = ((localOffsetA + 9.0f * effectiveSpeed * indSpeedA * rotMultA * deltaSec) % 360f + 360f) % 360f
+                        localOffsetB = ((localOffsetB + 9.0f * effectiveSpeed * indSpeedB * rotMultB * deltaSec) % 360f + 360f) % 360f
+                        localOffsetC = ((localOffsetC + 9.0f * effectiveSpeed * indSpeedC * rotMultC * deltaSec) % 360f + 360f) % 360f
+                        localOffsetD = ((localOffsetD + 9.0f * effectiveSpeed * indSpeedD * rotMultD * deltaSec) % 360f + 360f) % 360f
                     }
                     lastTime = now
                 }

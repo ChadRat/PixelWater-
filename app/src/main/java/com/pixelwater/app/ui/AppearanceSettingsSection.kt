@@ -2200,6 +2200,18 @@ fun LazyListScope.renderRedesignedAppearanceSettingsSection(
                 Text("Aura Glow Background", fontWeight = FontWeight.Bold)
                 ChunkySettingSwitch(checked = auraGlowEnabled, onCheckedChange = { viewModel.updateAuraGlowEnabled(it) })
             }
+            HorizontalDivider(paddingVertical = 12.dp, color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f))
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(if (appLanguage == "el") "Περιστροφή Σχημάτων" else "Shape Dynamic Rotation", fontWeight = FontWeight.Bold)
+                    Text(
+                        text = if (appLanguage == "el") "Ενεργοποιεί τη συνεχή ομαλή περιστροφή των σχημάτων φόντου" else "Enables continuous smooth rotation for background shapes",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                    )
+                }
+                ChunkySettingSwitch(checked = shapeRotationEnabled, onCheckedChange = { viewModel.updateShapeRotationEnabled(it) })
+            }
 
             if (isNerdMode) {
                 // Background Contrast Slider

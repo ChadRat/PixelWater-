@@ -2,6 +2,7 @@ package com.pixelwater.app.ui
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.Shape
 
 import kotlin.math.roundToInt
 
@@ -34,6 +35,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -122,18 +126,19 @@ import androidx.compose.foundation.gestures.Orientation
 import com.pixelwater.app.data.*
 
 /**
- * Expressive 12-lobed rounded scallop rosette shape matching Material 3 expressive badge
- * with smooth, ultra-round pill edges.
+ * Expressive 12-lobed rounded scallop rosette shape that can smoothly morph
+ * from a perfect circle (scallopProgress = 0f) to the full Material 3 badge shape (scallopProgress = 1f).
  */
-val ScallopedRosetteShape = GenericShape { size, _ ->
+fun getScallopedRosetteShape(scallopProgress: Float = 1f): Shape = GenericShape { size, _ ->
     val lobes = 12
     val radius = minOf(size.width, size.height) / 2f
     val cx = size.width / 2f
     val cy = size.height / 2f
     val rMax = radius
-    val rMin = radius * 0.88f
+    val depth = 0.12f * scallopProgress.coerceIn(0f, 1f)
+    val rMin = radius * (1f - depth)
     val dTheta = (2f * Math.PI.toFloat()) / lobes
-    val handleFraction = (dTheta / 4f) * 0.92f
+    val handleFraction = (dTheta / 4f) * (0.92f + 0.08f * (1f - scallopProgress.coerceIn(0f, 1f)))
 
     val startX = cx + rMin
     val startY = cy
@@ -177,6 +182,8 @@ val ScallopedRosetteShape = GenericShape { size, _ ->
     }
     close()
 }
+
+val ScallopedRosetteShape = getScallopedRosetteShape(1f)
 
 /**
  * Google Pixel-style rounded send arrow icon with round cap and round join
@@ -303,6 +310,46 @@ fun AICoachInputBar(
     // - When idle / inactive: continuous slow counter-clockwise rotation (-8 deg/s)
     // - Transitions seamlessly with zero jumps or pops after 300ms of user not typing
     var rotationAngle by remember { mutableFloatStateOf(0f) }
+
+    val view = androidx.compose.ui.platform.LocalView.current
+    val coroutineScope = rememberCoroutineScope()
+    var isGearAnimating by remember { mutableStateOf(false) }
+    val gearAnim = remember { androidx.compose.animation.core.Animatable(0f) }
+    var gearJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    val triggerSendClick = {
+        gearJob?.cancel()
+        gearJob = coroutineScope.launch {
+            isGearAnimating = true
+            val startAngle = rotationAngle
+            gearAnim.snapTo(0f)
+            val stepSize = 15f
+            var lastStep = 0
+            gearAnim.animateTo(
+                targetValue = 90f,
+                animationSpec = tween(
+                    durationMillis = 2000,
+                    easing = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1.25f, 0.36f, 1.0f) // Organic gear motion: slower mechanical sweep with a subtle gear tooth overshoot & recoil lock
+                )
+            ) {
+                rotationAngle = (startAngle + value) % 360f
+                val currentStep = (value / stepSize).toInt()
+                if (currentStep != lastStep) {
+                    lastStep = currentStep
+                    try {
+                        view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+                    } catch (_: Exception) {}
+                }
+            }
+            // Crisp final detent lock haptic right as the gear settles into its final position
+            try {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            } catch (_: Exception) {}
+            rotationAngle = (startAngle + 90f) % 360f
+            isGearAnimating = false
+        }
+    }
+
     LaunchedEffect(Unit) {
         var lastNanos = 0L
         var oscillationPhase = 0f
@@ -322,7 +369,9 @@ fun AICoachInputBar(
                     // Smoothly blend velocity between typing wobble and idle rotation
                     val effectiveSpeed = writingWeight * wobbleSpeed + (1f - writingWeight) * idleRotSpeed
 
-                    rotationAngle = (rotationAngle + effectiveSpeed * dt) % 360f
+                    if (!isGearAnimating) {
+                        rotationAngle = (rotationAngle + effectiveSpeed * dt) % 360f
+                    }
                 }
                 lastNanos = nowNanos
             }
@@ -331,16 +380,133 @@ fun AICoachInputBar(
 
     val isSendVisible = (userText.trim().isNotEmpty() || hasAttachment) && !chatLoading
 
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    val sendBgColor = MaterialTheme.colorScheme.secondary
+    val sendContentColor = MaterialTheme.colorScheme.onSecondary
+
+    // Keyboard visibility & text bar focus tracking
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val isImeOpen = androidx.compose.foundation.layout.WindowInsets.ime.getBottom(density) > 0
+    val focusRequester = remember { FocusRequester() }
+    var userClickedToType by remember { mutableStateOf(false) }
+
+    // When the user closes their keyboard and there is no text, reset userClickedToType
+    LaunchedEffect(isImeOpen, userText) {
+        if (!isImeOpen && userText.isEmpty()) {
+            userClickedToType = false
+        }
+    }
+
+    // Retraction / Detachment rules:
+    // 1. Only detaches from the text bar when the user clicks on it to type and at no other time.
+    // 2. Should the user close their keyboard and if there is no text inside the text bar, it retracts again into the text bar.
+    // 3. If there is text in and they have closed their keyboard, it stays detached.
+    // 4. If though there is no text, it goes in the text bar again.
+    val shouldBeDetached = userText.isNotEmpty() || isImeOpen || userClickedToType
+
+    val separationAnim = remember { androidx.compose.animation.core.Animatable(if (userText.isNotEmpty()) 1f else 0f) }
+    var hasPlayedSnapHaptic by remember { mutableStateOf(false) }
+
+    LaunchedEffect(shouldBeDetached) {
+        if (shouldBeDetached) {
+            separationAnim.animateTo(
+                targetValue = 1f,
+                animationSpec = tween(
+                    durationMillis = 850,
+                    easing = androidx.compose.animation.core.CubicBezierEasing(0.22f, 1.15f, 0.36f, 1.0f)
+                )
+            )
+        } else {
+            separationAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = tween(
+                    durationMillis = 650,
+                    easing = androidx.compose.animation.core.CubicBezierEasing(0.4f, 0f, 0.2f, 1f)
+                )
+            )
+        }
+    }
+
+    val sep = separationAnim.value
+    LaunchedEffect(sep) {
+        if (sep >= 0.72f && !hasPlayedSnapHaptic) {
+            hasPlayedSnapHaptic = true
+            try {
+                view.performHapticFeedback(android.view.HapticFeedbackConstants.KEYBOARD_TAP)
+            } catch (_: Exception) {}
+        } else if (sep < 0.4f) {
+            hasPlayedSnapHaptic = false
+        }
+    }
+
+    val currentShape = remember { getScallopedRosetteShape(1f) }
+
+    // Surface tension stretch and wobble during transition
+    val scaleX: Float
+    val scaleY: Float
+    if (sep in 0.4f..0.72f) {
+        val stretch = ((sep - 0.4f) / 0.32f).coerceIn(0f, 1f)
+        scaleX = 1f + 0.12f * stretch
+        scaleY = 1f - 0.08f * stretch
+    } else if (sep > 0.72f) {
+        val t = ((sep - 0.72f) / 0.28f).coerceIn(0f, 1f)
+        val wobble = kotlin.math.sin(t * Math.PI.toFloat() * 2f) * kotlin.math.exp(-3.8f * t) * 0.14f
+        scaleX = 1f - wobble
+        scaleY = 1f + wobble
+    } else {
+        scaleX = 1f
+        scaleY = 1f
+    }
+
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(60.dp)
     ) {
-        // Pill Text Bar (thicker, fully opaque unless glass theme is enabled)
+        val totalWidth = maxWidth
+        val textBarWidth = totalWidth - 60.dp * sep
+        val sendBtnX = totalWidth - androidx.compose.ui.unit.lerp(55.dp, 50.dp, sep)
+        val innerEndPadding = androidx.compose.ui.unit.lerp(60.dp, 8.dp, sep)
+
+        // Fluid liquid bridge between text bar right edge and the send button during transition
+        if (sep in 0.32f..0.78f) {
+            val density = androidx.compose.ui.platform.LocalDensity.current
+            val barRightPx = with(density) { textBarWidth.toPx() }
+            val btnLeftPx = with(density) { sendBtnX.toPx() }
+            if (btnLeftPx > barRightPx - 10f) {
+                Canvas(
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    val pinchFraction = ((sep - 0.32f) / 0.46f).coerceIn(0f, 1f)
+                    val waistHalfH = (44.dp.toPx() / 2f) * (1f - pinchFraction * 0.92f)
+                    val cy = size.height / 2f
+                    val x1 = barRightPx
+                    val x2 = btnLeftPx + 16.dp.toPx()
+                    val bridgePath = androidx.compose.ui.graphics.Path().apply {
+                        moveTo(x1, cy - 22.dp.toPx() * (1f - pinchFraction * 0.4f))
+                        cubicTo(
+                            x1 + (x2 - x1) * 0.4f, cy - waistHalfH,
+                            x1 + (x2 - x1) * 0.6f, cy - waistHalfH,
+                            x2, cy - 20.dp.toPx() * (1f - pinchFraction * 0.5f)
+                        )
+                        lineTo(x2, cy + 20.dp.toPx() * (1f - pinchFraction * 0.5f))
+                        cubicTo(
+                            x1 + (x2 - x1) * 0.6f, cy + waistHalfH,
+                            x1 + (x2 - x1) * 0.4f, cy + waistHalfH,
+                            x1, cy + 22.dp.toPx() * (1f - pinchFraction * 0.4f)
+                        )
+                        close()
+                    }
+                    drawPath(bridgePath, color = sendBgColor)
+                }
+            }
+        }
+
+        // Pill Text Bar (without any colored cap)
         Row(
             modifier = Modifier
-                .weight(1f)
-                .heightIn(min = 60.dp)
+                .width(textBarWidth)
+                .height(60.dp)
+                .clip(CircleShape)
                 .background(
                     color = if (isFrostedGlassEnabled) containerColor else if (isDark) Color(0xFF1E1F24) else MaterialTheme.colorScheme.surfaceVariant,
                     shape = CircleShape
@@ -360,7 +526,16 @@ fun AICoachInputBar(
                         )
                     }
                 )
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                .clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) {
+                    userClickedToType = true
+                    try {
+                        focusRequester.requestFocus()
+                    } catch (_: Exception) {}
+                }
+                .padding(start = 8.dp, end = innerEndPadding, top = 6.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Left '+' button
@@ -392,6 +567,7 @@ fun AICoachInputBar(
             androidx.compose.foundation.text.BasicTextField(
                 value = userText,
                 onValueChange = { newText ->
+                    userClickedToType = true
                     if (newText != userText) {
                         onUserTextChange(newText)
                         lastTypedTime = System.currentTimeMillis()
@@ -401,6 +577,12 @@ fun AICoachInputBar(
                 modifier = Modifier
                     .weight(1f)
                     .padding(vertical = 10.dp)
+                    .focusRequester(focusRequester)
+                    .onFocusChanged {
+                        if (it.isFocused) {
+                            userClickedToType = true
+                        }
+                    }
                     .testTag("gemini_chat_input"),
                 textStyle = androidx.compose.ui.text.TextStyle(
                     color = if (isDark) Color.White else Color.Black,
@@ -413,6 +595,7 @@ fun AICoachInputBar(
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(
                     onSend = {
                         if (isSendVisible) {
+                            triggerSendClick()
                             onSend()
                         }
                     }
@@ -440,7 +623,12 @@ fun AICoachInputBar(
             // Clear text button 'X' when text is present
             if (userText.isNotEmpty()) {
                 IconButton(
-                    onClick = onClearText,
+                    onClick = {
+                        onClearText()
+                        if (!isImeOpen) {
+                            userClickedToType = false
+                        }
+                    },
                     modifier = Modifier.size(32.dp)
                 ) {
                     Icon(
@@ -452,7 +640,7 @@ fun AICoachInputBar(
                 }
             }
 
-            // Right audio / voice button with waveform bars icon (matching the inactive send button icon)
+            // Right audio / voice button with waveform bars icon
             IconButton(
                 onClick = onVoiceClick,
                 modifier = Modifier.size(44.dp)
@@ -464,20 +652,24 @@ fun AICoachInputBar(
         }
 
         // Persistent Send Button with Scalloped Rosette Shape:
-        // - Always fully opaque (100% alpha)
-        // - Just stays there even when inactive
-        // - Continuous slow CCW rotating animation doubles as the inactive animation
-        // - Very slowly and smoothly rocks back and forth while typing
-        // - Smoothly transitions into the rotating animation after 300ms of user not typing
+        // - Whole shape and send icon absorbs into the text bar and separates dynamically
+        // - Continuous rotating animation (idle slow rotation, typing wobble, and 90° gear recoil on click) is fully preserved
         // - The Google Pixel-like send arrow remains completely still and upright
-        val sendBgColor = MaterialTheme.colorScheme.secondary
-        val sendContentColor = MaterialTheme.colorScheme.onSecondary
-
         Box(
             modifier = Modifier
+                .offset(x = sendBtnX, y = 5.dp)
                 .size(50.dp)
+                .graphicsLayer {
+                    this.scaleX = scaleX
+                    this.scaleY = scaleY
+                }
                 .clip(CircleShape)
-                .clickable(enabled = isSendVisible) {
+                .clickable(
+                    enabled = isSendVisible,
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null
+                ) {
+                    triggerSendClick()
                     onSend()
                 }
                 .testTag("gemini_send_btn"),
@@ -490,7 +682,7 @@ fun AICoachInputBar(
                     .graphicsLayer {
                         rotationZ = rotationAngle
                     }
-                    .clip(ScallopedRosetteShape)
+                    .clip(currentShape)
                     .background(color = sendBgColor)
             )
 

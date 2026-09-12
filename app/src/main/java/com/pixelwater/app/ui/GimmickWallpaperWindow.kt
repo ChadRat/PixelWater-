@@ -183,10 +183,10 @@ fun GimmickWallpaperWindow(
     var selectedShapeIndex by remember { mutableStateOf(-1) }
 
     // Shape-specific properties (A, B, C, D)
-    var indSpeedA by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_a", 1.0f)) }
-    var indSpeedB by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_b", 1.0f)) }
-    var indSpeedC by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_c", 1.0f)) }
-    var indSpeedD by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_d", 1.0f)) }
+    var indSpeedA by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_a", 0.5f)) }
+    var indSpeedB by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_b", 0.5f)) }
+    var indSpeedC by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_c", 0.5f)) }
+    var indSpeedD by remember { mutableStateOf(prefs.getFloat("gimmick_ind_speed_d", 0.5f)) }
 
     var indSatA by remember { mutableStateOf(prefs.getFloat("gimmick_ind_sat_a", 1.0f)) }
     var indSatB by remember { mutableStateOf(prefs.getFloat("gimmick_ind_sat_b", 1.0f)) }

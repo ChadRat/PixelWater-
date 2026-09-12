@@ -1829,7 +1829,7 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private val _auraGlowEnabled = MutableStateFlow(prefs.getBoolean("aura_glow_enabled", false))
     val auraGlowEnabled: StateFlow<Boolean> = _auraGlowEnabled.asStateFlow()
 
-    private val _shapeRotationEnabled = MutableStateFlow(false)
+    private val _shapeRotationEnabled = MutableStateFlow(prefs.getBoolean("shape_rotation_enabled", true))
     val shapeRotationEnabled: StateFlow<Boolean> = _shapeRotationEnabled.asStateFlow()
 
     private val _materialShapesRotationSpeed = MutableStateFlow(prefs.getFloat("material_shapes_rotation_speed", 1.0f).coerceIn(0.1f, 1.0f))
@@ -3582,6 +3582,43 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
         // Synchronize application locales with the saved/detected language on startup
         updateAppLanguage(_appLanguage.value)
 
+        // Ensure Shape Palette Spectrum Shift is enabled by default
+        if (!prefs.contains("shape_palette_shift_default_v142")) {
+            prefs.edit()
+                .putBoolean("shape_palette_shift_default_v142", true)
+                .putBoolean("shape_palette_shift_enabled", true)
+                .apply()
+            _shapePaletteShiftEnabled.value = true
+        }
+
+        // Restore shape rotation if it was disabled by earlier bug
+        if (!prefs.contains("shape_rotation_enabled_v142_restored")) {
+            prefs.edit()
+                .putBoolean("shape_rotation_enabled_v142_restored", true)
+                .putBoolean("shape_rotation_enabled", true)
+                .apply()
+            _shapeRotationEnabled.value = true
+        }
+
+        // Ensure shape rotation multipliers are not frozen at 0
+        if (_shapeRotMultA.value == 0f && _shapeRotMultB.value == 0f && _shapeRotMultC.value == 0f && _shapeRotMultD.value == 0f) {
+            updateShapeRotMultA(1.0f)
+            updateShapeRotMultB(-0.727f)
+            updateShapeRotMultC(0.533f)
+            updateShapeRotMultD(-0.615f)
+        }
+
+        // Ensure default independent shape speeds are 0.5x for each shape
+        if (!prefs.contains("gimmick_ind_speed_default_05_applied")) {
+            prefs.edit()
+                .putBoolean("gimmick_ind_speed_default_05_applied", true)
+                .putFloat("gimmick_ind_speed_a", 0.5f)
+                .putFloat("gimmick_ind_speed_b", 0.5f)
+                .putFloat("gimmick_ind_speed_c", 0.5f)
+                .putFloat("gimmick_ind_speed_d", 0.5f)
+                .apply()
+        }
+
         // Enforce user preferred data limit and calculate initial accurate user data usage
         refreshCurrentUserDataSize()
 
@@ -5231,8 +5268,8 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateShapeRotationEnabled(enabled: Boolean) {
-        _shapeRotationEnabled.value = false
-        prefs.edit().putBoolean("shape_rotation_enabled", false).apply()
+        _shapeRotationEnabled.value = enabled
+        prefs.edit().putBoolean("shape_rotation_enabled", enabled).apply()
         triggerButtonHaptic()
     }
 

@@ -122,10 +122,10 @@ class GlowShapesWallpaperService : WallpaperService() {
             val rotMultC = prefs.getFloat("gimmick_rot_mult_c", 0.533f)
             val rotMultD = prefs.getFloat("gimmick_rot_mult_d", -0.615f)
 
-            val indSpeedA = prefs.getFloat("gimmick_ind_speed_a", 1.0f)
-            val indSpeedB = prefs.getFloat("gimmick_ind_speed_b", 1.0f)
-            val indSpeedC = prefs.getFloat("gimmick_ind_speed_c", 1.0f)
-            val indSpeedD = prefs.getFloat("gimmick_ind_speed_d", 1.0f)
+            val indSpeedA = prefs.getFloat("gimmick_ind_speed_a", 0.5f)
+            val indSpeedB = prefs.getFloat("gimmick_ind_speed_b", 0.5f)
+            val indSpeedC = prefs.getFloat("gimmick_ind_speed_c", 0.5f)
+            val indSpeedD = prefs.getFloat("gimmick_ind_speed_d", 0.5f)
 
             // Update phases for rotating angles
             if (rotationEnabled && visible) {
