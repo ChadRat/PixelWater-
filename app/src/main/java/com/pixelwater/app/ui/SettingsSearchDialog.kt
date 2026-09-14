@@ -185,6 +185,11 @@ fun SettingsSearchDialog(
                 if (appLanguage == "el") "Επικοινωνία & Πληροφορίες" else "About the Developer",
                 if (appLanguage == "el") "Λεπτομέρειες για την εφαρμογή και επικοινωνία με τον δημιουργό" else "Contact the creator, view details and developer info",
                 "contact_me"
+            ),
+            Triple(
+                if (appLanguage == "el") "Σχετικά & Άδεια Χρήσης" else "About & App License",
+                if (appLanguage == "el") "Πηγαίος κώδικας στο GitHub, αναφορά προβλημάτων και πλήρης άδεια GNU GPLv3" else "GitHub repository URL, issue reporting, and GNU GPLv3 license",
+                "about"
             )
         )
     }

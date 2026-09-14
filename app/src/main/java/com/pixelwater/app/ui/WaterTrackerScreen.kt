@@ -1422,6 +1422,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
     val tabTransitionMode by viewModel.tabTransitionMode.collectAsStateWithLifecycle()
     val isSwipeTabNavEnabled by viewModel.isSwipeTabNavEnabled.collectAsStateWithLifecycle()
     val isDeveloper by viewModel.isDeveloper.collectAsStateWithLifecycle()
+    val showNextAlertAndLastIntake by viewModel.showNextAlertAndLastIntake.collectAsStateWithLifecycle()
     
     val bounceStiffnessRaw by viewModel.bounceStiffness.collectAsStateWithLifecycle()
     val bounceDamping by viewModel.bounceDamping.collectAsStateWithLifecycle()
@@ -2735,9 +2736,10 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             "ai_integration" -> if (appLanguage == "el") "Σύμβουλος AI" else "AI Integration"
                             "adjust_corner_radius" -> if (appLanguage == "el") "Προσαρμογή Καμπυλότητας" else "Adjust Corner Radius"
                             "contact_me" -> if (appLanguage == "el") "Επικοινωνία" else "Contact Me"
-                            "apk_updates" -> if (appLanguage == "el") "Λήψη APK" else "Sideload & APK Updates"
+                            "apk_updates" -> if (appLanguage == "el") "Λήψη APK & Ενημερώσεις" else "Download APK & Updates"
                             "developer_options" -> if (appLanguage == "el") "Επιλογές Προγραμματιστή" else "Developer Options"
                             "legal_disclaimer" -> if (appLanguage == "el") "Νομική Αποποίηση" else "Legal Disclaimer"
+                            "about" -> if (appLanguage == "el") "Σχετικά" else "About"
                             else -> if (appLanguage == "el") "Ρυθμίσεις" else "Settings"
                         }
 
@@ -3089,6 +3091,12 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             appLanguage = appLanguage,
                             onBack = { settingsSubPage = null }
                         )
+                    } else if (subPage == "about") {
+                        renderAboutSection(
+                            viewModel = viewModel,
+                            appLanguage = appLanguage,
+                            onBack = { settingsSubPage = null }
+                        )
                     } else {
                         renderSettingsSection(
                             viewModel = viewModel,
@@ -3145,6 +3153,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             onNavigateToContactMe = { settingsSubPage = "contact_me" },
                             onNavigateToApkUpdates = { settingsSubPage = "apk_updates" },
                             onNavigateToLegalDisclaimer = { settingsSubPage = "legal_disclaimer" },
+                            onNavigateToAbout = { settingsSubPage = "about" },
                             onNavigateToDeveloperOptions = { settingsSubPage = "developer_options" },
                             appLanguage = appLanguage,
                             titleFaceStyle = titleFaceStyle,
@@ -3211,7 +3220,9 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                 "ai_integration" -> if (appLanguage == "el") "Σύμβουλος AI" else "AI Integration"
                                 "adjust_corner_radius" -> if (appLanguage == "el") "Προσαρμογή Καμπυλότητας" else "Adjust Corner Radius"
                                 "contact_me" -> if (appLanguage == "el") "Επικοινωνία" else "Contact Me"
-                                "apk_updates" -> if (appLanguage == "el") "Λήψη APK" else "Sideload & APK Updates"
+                                "apk_updates" -> if (appLanguage == "el") "Λήψη APK & Ενημερώσεις" else "Download APK & Updates"
+                                "legal_disclaimer" -> if (appLanguage == "el") "Νομική Αποποίηση" else "Legal Disclaimer"
+                                "about" -> if (appLanguage == "el") "Σχετικά" else "About"
                                 else -> if (appLanguage == "el") "Ενυδάτωση" else "Hydration"
                             }
                     Column(
@@ -3783,6 +3794,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                     }
 
                     // Spectacular Info Grid Row (Compact Next Alert & Last Intake - Pixel/Android 16 style)
+                    if (showNextAlertAndLastIntake) {
                     item {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -3991,6 +4003,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                 }
                             }
                         }
+                    }
                     }
 
                     // Custom Smart AI Hydration Insight Card
@@ -4365,6 +4378,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             val isLglassTheme = isFrostedGlass || currentAppTheme.equals("GLASS", ignoreCase = true) || currentAppTheme.contains("GLASS", ignoreCase = true)
                             val shapeColor = if (isLglassTheme) Color.Transparent else MaterialTheme.colorScheme.surfaceVariant
                             val sixLobedShape = remember { SixLobedCardShape(amplitude = 0.14f) }
+                            val pillShape = remember { RoundedCornerShape(percent = 50) }
 
                             // Smooth very slow continuous rotation: full turn clockwise (0 -> 360), then one anticlockwise (360 -> 0)
                             val infiniteTransition = androidx.compose.animation.core.rememberInfiniteTransition(label = "EmptyStateShapeRotation")
@@ -4384,48 +4398,45 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             Box(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(vertical = 20.dp),
+                                    .padding(vertical = 24.dp),
                                 contentAlignment = Alignment.Center
                             ) {
-                                // Rotating 6-lobed shape background with 1dp outline
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth(0.85f)
-                                        .aspectRatio(1.0f)
-                                        .graphicsLayer {
-                                            rotationZ = shapeRotationAngle
-                                        }
-                                        .clip(sixLobedShape)
-                                        .background(shapeColor, sixLobedShape)
-                                        .then(
-                                            if (isLglassTheme) {
-                                                Modifier.border(1.dp, GlassTheme.getCardBorderBrush(isDark), sixLobedShape)
-                                            } else if (!isDark) {
-                                                Modifier.border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f), sixLobedShape)
-                                            } else {
-                                                Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f), sixLobedShape)
-                                            }
-                                        )
-                                )
-
-                                // Foreground readable content centered within the 6-lobed shape
+                                // Foreground readable content centered
                                 Column(
                                     horizontalAlignment = Alignment.CenterHorizontally,
                                     verticalArrangement = Arrangement.Center,
                                     modifier = Modifier
-                                        .fillMaxWidth(0.72f)
+                                        .fillMaxWidth(0.85f)
                                         .padding(horizontal = 20.dp, vertical = 20.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Info,
-                                        contentDescription = "Empty Glass Icon",
-                                        tint = if (isLglassTheme) {
-                                            MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
-                                        } else {
-                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.85f)
-                                        },
-                                        modifier = Modifier.size(44.dp)
-                                    )
+                                    // Exclamation mark in the exact rotating 6-lobed shape from the message background, way smaller in size
+                                    Box(
+                                        modifier = Modifier.size(52.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        // Rotating 6-lobed shape background
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .graphicsLayer {
+                                                    rotationZ = shapeRotationAngle
+                                                }
+                                                .clip(sixLobedShape)
+                                                .background(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    shape = sixLobedShape
+                                                )
+                                        )
+
+                                        // Exclamation mark icon
+                                        Icon(
+                                            imageVector = Icons.Rounded.PriorityHigh,
+                                            contentDescription = "Empty Log Alert",
+                                            tint = MaterialTheme.colorScheme.onPrimary,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+
                                     Spacer(modifier = Modifier.height(10.dp))
                                     Text(
                                         text = if (appLanguage == "el") "Δεν έχει καταγραφεί νερό για αυτήν την ημέρα." else "No water logged for this date.",
@@ -4689,6 +4700,12 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             appLanguage = appLanguage,
                             onBack = { settingsSubPage = null }
                         )
+                    } else if (settingsSubPage == "about") {
+                        renderAboutSection(
+                            viewModel = viewModel,
+                            appLanguage = appLanguage,
+                            onBack = { settingsSubPage = null }
+                        )
                     } else {
 
                         renderSettingsSection(
@@ -4746,6 +4763,7 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                             onNavigateToContactMe = { settingsSubPage = "contact_me" },
                             onNavigateToApkUpdates = { settingsSubPage = "apk_updates" },
                             onNavigateToLegalDisclaimer = { settingsSubPage = "legal_disclaimer" },
+                            onNavigateToAbout = { settingsSubPage = "about" },
                             onNavigateToDeveloperOptions = { settingsSubPage = "developer_options" },
                             appLanguage = appLanguage,
                             titleFaceStyle = titleFaceStyle,
@@ -7649,9 +7667,9 @@ fun WaterTrackerScreen(viewModel: WaterViewModel, modifier: Modifier = Modifier)
                                 val dynamicVersionName = remember(context) {
                                     try {
                                         val packageInfo = context.packageManager.getPackageInfo(context.packageName, 0)
-                                        packageInfo.versionName ?: "1.4.2"
+                                        packageInfo.versionName ?: "1.4.3"
                                     } catch (e: Exception) {
-                                        "1.4.2"
+                                        "1.4.3"
                                     }
                                 }
                                 Text(
@@ -10181,9 +10199,12 @@ fun WaterGlassProgress(
                 val cardShape = RoundedCornerShape(20.dp)
                 val isFrostedGlass = LocalFrostedGlassEnabled.current
 
+                val transparentComponentsEnabled = LocalTransparentComponentsEnabled.current
+                val componentsTransparency = LocalComponentsTransparency.current
+
                 if (isFrostedGlass) {
-                    val glassBorderColor = if (isDark) Color(0x33FFFFFF) else Color(0x4000BFA5)
-                    val glassContainerColor = if (isDark) Color(0x2B2C3131) else Color(0x35FFFFFF)
+                    val glassBorderColor = if (isDark) Color.Transparent else Color(0x4000BFA5)
+                    val glassContainerColor = if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f) else Color(0x35FFFFFF)
 
                     Box(
                         modifier = Modifier
@@ -10204,13 +10225,13 @@ fun WaterGlassProgress(
                                 .background(
                                     brush = Brush.verticalGradient(
                                         colors = listOf(
-                                            if (isDark) Color(0x25FFFFFF) else Color(0x45FFFFFF),
-                                            if (isDark) Color(0x1000BFA5) else Color(0x1A00BFA5)
+                                            if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f) else Color(0x45FFFFFF),
+                                            if (isDark) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.2f) else Color(0x1A00BFA5)
                                         )
                                     ),
                                     shape = cardShape
                                 )
-                                .border(1.2.dp, glassBorderColor, cardShape)
+                                .then(if (!isDark) Modifier.border(1.2.dp, glassBorderColor, cardShape) else Modifier)
                         )
                         Row(
                             modifier = Modifier
@@ -10224,30 +10245,34 @@ fun WaterGlassProgress(
                                 Text(
                                     text = if (appLanguage == "el") "Ο Καθημερινός Στόχος Επιτεύχθηκε!" else "Daily Goal Achieved!",
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    color = if (isDark) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onTertiaryContainer,
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
                                     text = if (appLanguage == "el") 
                                         "Εξαιρετική δουλειά! Φτάσατε το 100% του καθημερινού σας στόχου νερού." 
                                         else "Awesome job! You reached 100% of your daily water intake goal.",
-                                    color = if (isDark) Color.LightGray.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
+                                    color = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.85f),
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
                         }
                     }
                 } else {
-                    // Fully opaque card when glass theme is off
+                    // Standard card matching hydration insight box color and no outline in dark mode
+                    val containerColor = if (transparentComponentsEnabled) {
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = componentsTransparency)
+                    } else {
+                        if (isDark) MaterialTheme.colorScheme.surfaceVariant
+                        else MaterialTheme.colorScheme.tertiaryContainer
+                    }
+
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = cardShape,
-                        color = if (isDark) Color(0xFF1E2826) else MaterialTheme.colorScheme.tertiaryContainer,
-                        tonalElevation = 2.dp,
-                        border = androidx.compose.foundation.BorderStroke(
-                            1.dp,
-                            if (isDark) Color(0xFF00BFA5).copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant
-                        )
+                        color = containerColor,
+                        tonalElevation = if (isDark) 0.dp else 2.dp,
+                        border = if (isDark) null else androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
                     ) {
                         Row(
                             modifier = Modifier
@@ -10261,14 +10286,14 @@ fun WaterGlassProgress(
                                 Text(
                                     text = if (appLanguage == "el") "Ο Καθημερινός Στόχος Επιτεύχθηκε!" else "Daily Goal Achieved!",
                                     fontWeight = FontWeight.Bold,
-                                    color = if (isDark) Color.White else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    color = if (isDark) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onTertiaryContainer,
                                     style = MaterialTheme.typography.titleMedium
                                 )
                                 Text(
                                     text = if (appLanguage == "el") 
                                         "Εξαιρετική δουλειά! Φτάσατε το 100% του καθημερινού σας στόχου νερού." 
                                         else "Awesome job! You reached 100% of your daily water intake goal.",
-                                    color = if (isDark) Color(0xFFB0BEC5) else MaterialTheme.colorScheme.onTertiaryContainer,
+                                    color = if (isDark) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onTertiaryContainer,
                                     style = MaterialTheme.typography.bodySmall
                                 )
                             }
@@ -16497,6 +16522,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
     onNavigateToContactMe: () -> Unit,
     onNavigateToApkUpdates: () -> Unit,
     onNavigateToLegalDisclaimer: () -> Unit,
+    onNavigateToAbout: () -> Unit = {},
     onNavigateToDeveloperOptions: () -> Unit,
     appLanguage: String,
     titleFaceStyle: Int,
@@ -17515,7 +17541,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
                     }
                     Column {
                         Text(
-                            text = if (appLanguage == "el") "Λήθινη & Ενημερώσεις APK" else "Download APK & Updates",
+                            text = if (appLanguage == "el") "Λήψη APK & Ενημερώσεις" else "Download APK & Updates",
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
@@ -17643,6 +17669,62 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderSettingsSection(
                 Icon(
                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                     contentDescription = "Navigate to Legal Disclaimer",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+    }
+
+    // About Card
+    item {
+        ChunkySettingCard(
+            modifier = Modifier.clickable { 
+                onNavigateToAbout() 
+                viewModel.triggerButtonHaptic()
+            }
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Info,
+                            contentDescription = "About icon",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Column {
+                        Text(
+                            text = if (appLanguage == "el") "Σχετικά" else "About",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = if (appLanguage == "el") "Πηγαίος κώδικας, αναφορά προβλημάτων & άδεια χρήσης." else "Source code, issue tracker & app license.",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+                        )
+                    }
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = "Navigate to About",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(24.dp)
                 )
@@ -21024,7 +21106,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderApkUpdatesSection(
                         }
                         Column {
                             Text(
-                                text = if (appLanguage == "el") "Κόπλο" else "Gimmick",
+                                text = if (appLanguage == "el") "Κόλπο" else "Gimmick",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurface
@@ -21052,7 +21134,7 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderApkUpdatesSection(
                 ) {
                     Icon(imageVector = androidx.compose.material.icons.Icons.Rounded.Wallpaper, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (appLanguage == "el") "Άνοιγμα Κόπλο" else "Configure Gimmick", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(if (appLanguage == "el") "Άνοιγμα Κόλπου" else "Configure Gimmick", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             }
         }
@@ -29704,6 +29786,10 @@ fun androidx.compose.foundation.lazy.LazyListScope.renderDeveloperOptionsSection
         DevRainSimulationCard(viewModel = viewModel, appLanguage = appLanguage)
     }
 
+    item {
+        DevNextAlertAndLastIntakeToggleCard(viewModel = viewModel, appLanguage = appLanguage)
+    }
+
 }
 
 @Composable
@@ -30437,6 +30523,72 @@ fun DevRainSimulationCard(
                     },
                     fontWeight = FontWeight.Bold,
                     fontSize = 13.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun DevNextAlertAndLastIntakeToggleCard(
+    viewModel: WaterViewModel,
+    appLanguage: String,
+    modifier: Modifier = Modifier
+) {
+    val showBoxes by viewModel.showNextAlertAndLastIntake.collectAsStateWithLifecycle()
+    val isGreek = appLanguage == "el"
+
+    ChunkySettingCard {
+        Column(
+            modifier = modifier.fillMaxWidth().padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Widgets,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(20.dp)
+                )
+                Text(
+                    text = if (isGreek) "Πλαίσια Επόμενης Ειδοποίησης & Τελ. Κατανάλωσης" else "Next Alert & Last Intake Boxes",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            Text(
+                text = if (isGreek) {
+                    "Εμφάνιση ή απόκρυψη των πλαισίων επόμενης ειδοποίησης και τελευταίας κατανάλωσης στην καρτέλα παρακολούθησης (Track tab)."
+                } else {
+                    "Show or hide the Next Alert and Last Intake status boxes located on the main Track tab."
+                },
+                fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surfaceContainer, RoundedCornerShape(12.dp))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = if (isGreek) "Εμφάνιση Πλαισίων" else "Show Info Boxes",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                ChunkySettingSwitch(
+                    checked = showBoxes,
+                    onCheckedChange = {
+                        viewModel.updateShowNextAlertAndLastIntake(it)
+                        viewModel.triggerToggleHaptic()
+                    }
                 )
             }
         }

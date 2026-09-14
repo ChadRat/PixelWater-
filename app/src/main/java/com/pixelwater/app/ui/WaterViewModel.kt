@@ -179,6 +179,9 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     private val _isDeveloper = MutableStateFlow(prefs.getBoolean("is_developer", false))
     val isDeveloper: StateFlow<Boolean> = _isDeveloper.asStateFlow()
 
+    private val _showNextAlertAndLastIntake = MutableStateFlow(prefs.getBoolean("show_next_alert_and_last_intake", true))
+    val showNextAlertAndLastIntake: StateFlow<Boolean> = _showNextAlertAndLastIntake.asStateFlow()
+
     private val _isFartModeEnabled = MutableStateFlow(prefs.getBoolean("is_fart_mode_enabled", false))
     val isFartModeEnabled: StateFlow<Boolean> = _isFartModeEnabled.asStateFlow()
 
@@ -282,6 +285,11 @@ class WaterViewModel(application: Application) : AndroidViewModel(application) {
     fun updateDeveloperMode(enabled: Boolean) {
         _isDeveloper.value = enabled
         prefs.edit().putBoolean("is_developer", enabled).apply()
+    }
+
+    fun updateShowNextAlertAndLastIntake(enabled: Boolean) {
+        _showNextAlertAndLastIntake.value = enabled
+        prefs.edit().putBoolean("show_next_alert_and_last_intake", enabled).apply()
     }
 
     fun updateFartModeEnabled(enabled: Boolean) {

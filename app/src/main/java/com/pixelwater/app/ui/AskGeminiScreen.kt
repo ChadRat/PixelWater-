@@ -501,6 +501,9 @@ fun AICoachInputBar(
             }
         }
 
+        val textBarBoxColor = containerColor
+        val textBarContentColor = MaterialTheme.colorScheme.onSurface
+
         // Pill Text Bar (without any colored cap)
         Row(
             modifier = Modifier
@@ -508,11 +511,13 @@ fun AICoachInputBar(
                 .height(60.dp)
                 .clip(CircleShape)
                 .background(
-                    color = if (isFrostedGlassEnabled) containerColor else if (isDark) Color(0xFF1E1F24) else MaterialTheme.colorScheme.surfaceVariant,
+                    color = textBarBoxColor,
                     shape = CircleShape
                 )
                 .then(
-                    if (isFrostedGlassEnabled) {
+                    if (isDark) {
+                        Modifier
+                    } else if (isFrostedGlassEnabled) {
                         Modifier.border(
                             width = 1.dp,
                             brush = GlassTheme.getCardBorderBrush(isDark),
@@ -521,7 +526,7 @@ fun AICoachInputBar(
                     } else {
                         Modifier.border(
                             width = 1.dp,
-                            color = if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f),
                             shape = CircleShape
                         )
                     }
@@ -547,7 +552,7 @@ fun AICoachInputBar(
                     Icon(
                         imageVector = Icons.Rounded.Add,
                         contentDescription = if (appLanguage == "el") "Επισύναψη" else "Attach",
-                        tint = if (hasAttachment) MaterialTheme.colorScheme.primary else (if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant),
+                        tint = if (hasAttachment) MaterialTheme.colorScheme.secondary else textBarContentColor,
                         modifier = Modifier.size(24.dp)
                     )
                     if (hasAttachment) {
@@ -555,7 +560,7 @@ fun AICoachInputBar(
                             modifier = Modifier
                                 .size(7.dp)
                                 .align(Alignment.TopEnd)
-                                .background(MaterialTheme.colorScheme.primary, CircleShape)
+                                .background(MaterialTheme.colorScheme.secondary, CircleShape)
                         )
                     }
                 }
@@ -585,7 +590,7 @@ fun AICoachInputBar(
                     }
                     .testTag("gemini_chat_input"),
                 textStyle = androidx.compose.ui.text.TextStyle(
-                    color = if (isDark) Color.White else Color.Black,
+                    color = textBarContentColor,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Normal
                 ),
@@ -600,7 +605,7 @@ fun AICoachInputBar(
                         }
                     }
                 ),
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(if (isDark) Color.White else MaterialTheme.colorScheme.primary),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(textBarContentColor),
                 decorationBox = { innerTextField ->
                     Box(
                         modifier = Modifier.fillMaxWidth(),
@@ -609,7 +614,7 @@ fun AICoachInputBar(
                         if (userText.isEmpty()) {
                             Text(
                                 text = placeholderText,
-                                color = if (isDark) Color(0xFF8E9199) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
+                                color = textBarContentColor.copy(alpha = 0.7f),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1
@@ -634,7 +639,7 @@ fun AICoachInputBar(
                     Icon(
                         imageVector = Icons.Rounded.Close,
                         contentDescription = "Clear text",
-                        tint = if (isDark) Color.White.copy(alpha = 0.6f) else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                        tint = textBarContentColor.copy(alpha = 0.75f),
                         modifier = Modifier.size(17.dp)
                     )
                 }
@@ -646,7 +651,7 @@ fun AICoachInputBar(
                 modifier = Modifier.size(44.dp)
             ) {
                 GeminiLiveWaveformBars(
-                    tint = if (isDark) Color.White.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = textBarContentColor
                 )
             }
         }
@@ -1903,7 +1908,9 @@ fun SuggestedTopicCard(
             .clip(CircleShape)
             .background(color = containerColor)
             .then(
-                if (isFrostedGlassEnabled) {
+                if (isDark) {
+                    Modifier
+                } else if (isFrostedGlassEnabled) {
                     Modifier.border(
                         width = 1.dp,
                         brush = GlassTheme.getCardBorderBrush(isDark),
@@ -1912,7 +1919,7 @@ fun SuggestedTopicCard(
                 } else {
                     Modifier.border(
                         width = 1.dp,
-                        color = if (isDark) Color.White.copy(alpha = 0.08f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
                         shape = CircleShape
                     )
                 }

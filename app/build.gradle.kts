@@ -15,8 +15,8 @@ android {
     applicationId = "com.pixelwater.app"
     minSdk = 26
     targetSdk = 35
-    versionCode = (project.findProperty("app.versionCode") as? String)?.toInt() ?: 6
-    versionName = (project.findProperty("app.versionName") as? String) ?: "1.4.2"
+    versionCode = (project.findProperty("app.versionCode") as? String)?.toInt() ?: 7
+    versionName = (project.findProperty("app.versionName") as? String) ?: "1.4.3"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
